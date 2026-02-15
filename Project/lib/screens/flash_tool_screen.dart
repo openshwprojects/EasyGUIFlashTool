@@ -4,6 +4,9 @@ import 'package:flutter/services.dart';
 import 'dart:io' show Platform;
 import 'package:provider/provider.dart';
 import '../providers/serial_provider.dart';
+import '../services/firmware_storage.dart';
+import '../services/firmware_downloader.dart';
+import '../widgets/download_dialog.dart';
 
 class FlashToolScreen extends StatefulWidget {
   const FlashToolScreen({super.key});
@@ -22,32 +25,69 @@ class _FlashToolScreenState extends State<FlashToolScreen> {
   // --- GUI-layer state (not in provider) ---
   final List<String> _logLines = [];
   double _progress = 0.0;
-  String _selectedPlatform = 'BK7231';
+  String _selectedPlatform = 'BK7231T';
   String _selectedFirmware = '(none)';
   String? _customFirmwarePath;
   bool _isDragOver = false;
 
+  // Firmware storage service (shared singleton)
+  final FirmwareStorage _storage = FirmwareStorage();
+
+  // Dynamic firmware list loaded from disk
+  List<String> _availableFirmwares = ['(none)'];
+
   static const List<String> _platforms = [
-    'BK7231',
+    'BK7231T',
     'BK7231N',
+    'BK7231M',
     'BK7238',
+    'BK7236',
+    'BK7252',
+    'BK7252N',
+    'BK7258',
+    'BL602',
+    'BL702',
+    'W600',
+    'W800',
+    'LN882H',
+    'XR809',
+    'RTL8710B',
     'ESP32',
-    'ESP32-S2',
-    'ESP32-C3',
-    'ESP8266',
   ];
 
-  static const List<String> _firmwarePlaceholders = [
-    '(none)',
-    'firmware_1.0.bin',
-    'firmware_2.0.bin',
-  ];
+  @override
+  void initState() {
+    super.initState();
+    _refreshFirmwareList();
+  }
 
   @override
   void dispose() {
     _logScrollController.dispose();
     _customBaudController.dispose();
     super.dispose();
+  }
+
+  /// Reload the firmware dropdown from disk (or in-memory on web).
+  Future<void> _refreshFirmwareList() async {
+    final prefix = FirmwareDownloader.getFirmwarePrefix(_selectedPlatform);
+    final files = await _storage.listFiles('firmwares', prefix: prefix);
+    if (mounted) {
+      setState(() {
+        _availableFirmwares = ['(none)', ...files];
+        // Keep current selection if still valid, else reset
+        if (!_availableFirmwares.contains(_selectedFirmware)) {
+          _selectedFirmware = '(none)';
+        }
+      });
+    }
+    // If we have no selection yet, try to restore the last downloaded
+    if (_selectedFirmware == '(none)' && _customFirmwarePath == null) {
+      final last = await _storage.getLastSaved('firmwares');
+      if (last != null && _availableFirmwares.contains(last) && mounted) {
+        setState(() => _selectedFirmware = last);
+      }
+    }
   }
 
   void _addLog(String message) {
@@ -377,6 +417,7 @@ class _FlashToolScreenState extends State<FlashToolScreen> {
               if (value != null) {
                 setState(() => _selectedPlatform = value);
                 _addLog('Platform changed to $value');
+                _refreshFirmwareList();
               }
             },
           ),
@@ -436,7 +477,7 @@ class _FlashToolScreenState extends State<FlashToolScreen> {
                 DropdownButton<String>(
                   value: _selectedFirmware,
                   underline: const SizedBox(),
-                  items: _firmwarePlaceholders.map((f) {
+                  items: _availableFirmwares.map((f) {
                     return DropdownMenuItem(value: f, child: Text(f));
                   }).toList(),
                   onChanged: (value) {
@@ -485,9 +526,23 @@ class _FlashToolScreenState extends State<FlashToolScreen> {
                 ),
                 const SizedBox(width: 6),
                 ElevatedButton.icon(
-                  onPressed: () {
-                    // Placeholder — will integrate URL download later
-                    _addLog('Download firmware... (placeholder)');
+                  onPressed: () async {
+                    final result = await DownloadDialog.show(
+                      context,
+                      platform: _selectedPlatform,
+                      storage: _storage,
+                    );
+                    if (result != null) {
+                      _addLog('Downloaded: ${result.fileName}');
+                      await _refreshFirmwareList();
+                      // Auto-select the newly downloaded firmware
+                      if (mounted && _availableFirmwares.contains(result.fileName)) {
+                        setState(() {
+                          _selectedFirmware = result.fileName;
+                          _customFirmwarePath = null;
+                        });
+                      }
+                    }
                   },
                   icon: const Icon(Icons.cloud_download, size: 18),
                   label: const Text('Download'),

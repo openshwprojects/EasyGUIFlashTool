@@ -29,6 +29,16 @@ dependencies:
   
   # Persistent storage
   shared_preferences: ^2.3.0
+  
+  # HTTP client
+  http: ^1.2.0
+  
+  # App directories (firmwares, backups, etc.)
+  path_provider: ^2.1.0
+  
+  # URL launcher (for opening download links on web)
+  url_launcher: ^6.2.0
+  desktop_drop: ^0.7.0
 
 dev_dependencies:
   flutter_test:
