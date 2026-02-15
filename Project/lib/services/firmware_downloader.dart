@@ -78,7 +78,10 @@ class FirmwareDownloader {
             sx++;
             int end = html.indexOf('"', pos);
             if (end > sx) {
-              String tagLink = 'https://github.com${html.substring(sx, end)}';
+              String tagLink = html.substring(sx, end);
+              if (!tagLink.startsWith('http')) {
+                tagLink = 'https://github.com$tagLink';
+              }
               log('Found release tag: $tagLink');
               // Fetch expanded release page
               final tagResp = await client.get(

@@ -73,7 +73,7 @@ class BK7231Flasher extends BaseFlasher {
   Future<void> doRead({int startSector = 0, int sectors = 10, bool fullRead = false}) async {
     try {
       setProgress(0, sectors);
-      addLogLine('\nStarting read!');
+      addLogLine('Starting read!');
       addLogLine('Read parms: start ${formatHex(startSector)} '
           '(sector ${startSector ~/ sectorSize}), '
           'len ${formatHex(sectors * sectorSize)} ($sectors sectors)');
@@ -883,12 +883,13 @@ class BK7231Flasher extends BaseFlasher {
 
     // 4K page align
     startSector = startSector & 0xfffff000;
+    addLogLine('Reading ${formatHex(sectors * sectorSize)} at ${formatHex(startSector)}, see progress bar for updates....');
     addLog('Going to start reading at offset ${formatHex(startSector)}...\n');
 
     for (int i = 0; i < sectors; i++) {
       if (isCancelled) return null;
       int addr = startSector + sectorSize * i;
-      setState('Reading ${formatHex(addr)}...');
+      setState('Reading ${formatHex(addr)} out of ${formatHex(startSector + sectors * sectorSize)}...');
 
       // BK7231T wrap-around hack
       if (chipType == BKType.bk7231t || chipType == BKType.bk7231u) {
