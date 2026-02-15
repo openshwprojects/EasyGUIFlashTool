@@ -1,0 +1,93 @@
+name: Build and Create EasyGUIFlashTool Release
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Install dependencies
+        working-directory: Project
+        run: flutter pub get
+
+      - name: Build APK
+        working-directory: Project
+        run: flutter build apk --release --build-number=${{ github.run_number }}
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: apk
+          path: Project/build/app/outputs/flutter-apk/app-release.apk
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Install dependencies
+        working-directory: Project
+        run: flutter pub get
+
+      - name: Build Windows
+        working-directory: Project
+        run: flutter build windows --release --build-number=${{ github.run_number }}
+
+      - name: Zip Windows build
+        run: Compress-Archive -Path Project/build/windows/x64/runner/Release/* -DestinationPath EasyGUIFlashTool-Windows.zip
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: EasyGUIFlashTool-Windows.zip
+
+  create-release:
+    needs: [build-apk, build-windows]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download APK
+        uses: actions/download-artifact@v4
+        with:
+          name: apk
+
+      - name: Download Windows build
+        uses: actions/download-artifact@v4
+        with:
+          name: windows
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v0.0.${{ github.run_number }}
+          name: "EasyGUIFlashTool v0.0.${{ github.run_number }}"
+          body: "Automated build from commit ${{ github.sha }}"
+          files: |
+            app-release.apk
+            EasyGUIFlashTool-Windows.zip

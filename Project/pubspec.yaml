@@ -1,0 +1,39 @@
+name: easy_gui_flash_tool
+description: EasyGUIFlashTool - A cross-platform UART flash tool
+
+publish_to: 'none'
+
+version: 0.0.1+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  
+  # State management
+  provider: ^6.1.2
+  
+  # Serial communication - Android
+  usb_serial: ^0.5.0
+  
+  # Serial communication - Desktop (Windows, Linux, macOS)
+  flutter_libserialport: ^0.6.0
+  
+  # Web support
+  web: ^1.0.0
+  
+  # UI components
+  cupertino_icons: ^1.0.8
+  
+  # Persistent storage
+  shared_preferences: ^2.3.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true

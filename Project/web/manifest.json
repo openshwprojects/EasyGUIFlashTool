@@ -1,0 +1,11 @@
+{
+    "name": "EasyGUIFlashTool",
+    "short_name": "EasyFlash",
+    "start_url": ".",
+    "display": "standalone",
+    "background_color": "#0175C2",
+    "theme_color": "#0175C2",
+    "description": "EasyGUIFlashTool - A cross-platform UART flash tool",
+    "orientation": "portrait-primary",
+    "prefer_related_applications": false
+}

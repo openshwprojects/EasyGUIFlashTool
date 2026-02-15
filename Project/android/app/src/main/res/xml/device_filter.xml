@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- This allows any USB device to trigger the application -->
+    <!-- You can restrict this to specific vendor/product IDs if needed -->
+    <usb-device />
+</resources>
