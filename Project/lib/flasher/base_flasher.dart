@@ -6,6 +6,9 @@ library;
 
 import 'dart:typed_data';
 import '../serial/serial_transport.dart';
+import '../models/log_level.dart';
+
+export '../models/log_level.dart';
 
 // ─── Enums ──────────────────────────────────────────────────────────────────
 
@@ -23,9 +26,6 @@ enum WriteMode {
   onlyOBKConfig,
   onlyErase,
 }
-
-/// Log severity levels.
-enum LogLevel { info, warning, error, success }
 
 // ─── Callbacks ──────────────────────────────────────────────────────────────
 

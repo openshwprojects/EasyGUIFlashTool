@@ -6,6 +6,7 @@ import 'package:desktop_drop/desktop_drop.dart';
 import '../services/firmware_downloader.dart';
 import '../services/firmware_storage.dart';
 import '../models/chip_platform.dart';
+import '../models/log_level.dart';
 import '../constants.dart';
 
 /// Modal dialog that downloads the latest firmware for a given platform,

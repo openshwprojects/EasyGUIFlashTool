@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart' show debugPrint, kIsWeb;
 import 'package:http/http.dart' as http;
 import 'firmware_storage.dart';
 import '../models/chip_platform.dart';
+import '../models/log_level.dart';
 import '../constants.dart';
 
 // Conditionally import dart:html only on web
@@ -27,8 +28,6 @@ class DownloadResult {
 /// Callback types used by the downloader.
 typedef LogCallback = void Function(String message, {LogLevel level});
 typedef ProgressCallback = void Function(int received, int total);
-
-enum LogLevel { info, success, warning, error }
 
 /// Downloads the latest OpenBK7231T_App firmware from GitHub Releases.
 /// Mirrors the logic in FormDownloader.cs from the C# flasher.
