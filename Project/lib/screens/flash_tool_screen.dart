@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/services.dart';
 import 'dart:io' show Platform;
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../providers/serial_provider.dart';
 import '../services/firmware_storage.dart';
 import '../services/file_saver.dart';
@@ -44,7 +45,42 @@ class _FlashToolScreenState extends State<FlashToolScreen> {
   @override
   void initState() {
     super.initState();
-    _refreshFirmwareList();
+    _restoreSettings();
+  }
+
+  Future<void> _restoreSettings() async {
+    final prefs = await SharedPreferences.getInstance();
+    
+    // 1. Restore Platform
+    final savedPlatformName = prefs.getString('ui_platform');
+    if (savedPlatformName != null) {
+      try {
+        // Match enum by name, e.g. "bk7231t"
+        final p = ChipPlatform.values.firstWhere((e) => e.name == savedPlatformName);
+        if (mounted) {
+          setState(() => _selectedPlatform = p);
+        }
+      } catch (_) {
+        // Saved platform invalid or changed, ignore
+      }
+    }
+
+    // 2. Refresh firmware list for the selected platform
+    await _refreshFirmwareList();
+
+    // 3. Restore Firmware Selection
+    final savedFirmware = prefs.getString('ui_firmware');
+    if (savedFirmware != null && mounted) {
+      // Only select if it's still available in the list
+      if (_availableFirmwares.contains(savedFirmware)) {
+        setState(() => _selectedFirmware = savedFirmware);
+      }
+    }
+  }
+
+  Future<void> _saveUiSetting(String key, String value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(key, value);
   }
 
   @override
@@ -67,7 +103,9 @@ class _FlashToolScreenState extends State<FlashToolScreen> {
         }
       });
     }
-    // If we have no selection yet, try to restore the last downloaded
+    
+    // Auto-select last downloaded logic (fallback if no stored UI setting was effectively used)
+    // We check if current selection is none AND custom is null
     if (_selectedFirmware == '(none)' && _customFirmwarePath == null) {
       final last = await _storage.getLastSaved('firmwares');
       if (last != null && _availableFirmwares.contains(last) && mounted) {
@@ -399,13 +437,14 @@ class _FlashToolScreenState extends State<FlashToolScreen> {
             items: ChipPlatform.values.map((p) {
               return DropdownMenuItem(value: p, child: Text(p.displayName));
             }).toList(),
-            onChanged: (value) {
-              if (value != null) {
-                setState(() => _selectedPlatform = value);
-                _addLog('Platform changed to ${value.displayName}');
-                _refreshFirmwareList();
-              }
-            },
+              onChanged: (value) {
+                if (value != null) {
+                  setState(() => _selectedPlatform = value);
+                  _saveUiSetting('ui_platform', value.name);
+                  _addLog('Platform changed to ${value.displayName}');
+                  _refreshFirmwareList();
+                }
+              },
           ),
         ],
       ),
@@ -472,6 +511,7 @@ class _FlashToolScreenState extends State<FlashToolScreen> {
                         _selectedFirmware = value;
                         _customFirmwarePath = null;
                       });
+                      _saveUiSetting('ui_firmware', value);
                       _addLog('Firmware selected: $value');
                     }
                   },
@@ -527,6 +567,7 @@ class _FlashToolScreenState extends State<FlashToolScreen> {
                           _selectedFirmware = result.fileName;
                           _customFirmwarePath = null;
                         });
+                        _saveUiSetting('ui_firmware', result.fileName);
                       }
                     }
                   },
@@ -548,29 +589,62 @@ class _FlashToolScreenState extends State<FlashToolScreen> {
 
   // ── Flasher integration helpers ──────────────────────────────────────
 
-  BK7231Flasher? _createFlasher() {
+  BK7231Flasher? _currentFlasher;
+
+  // ── Flasher integration helpers ──────────────────────────────────────
+
+  void _createFlasher() {
     final provider = context.read<SerialProvider>();
     final bkType = _selectedPlatform.bkType;
     if (bkType == null) {
       _addLog('ERROR: ${_selectedPlatform.displayName} is not a BK-family chip — flasher not available.');
-      return null;
+      return;
     }
-    final flasher = BK7231Flasher(
+    _currentFlasher = BK7231Flasher(
       transport: provider.transport,
       chipType: bkType,
       baudrate: provider.baudRate,
     );
     // Wire logging callbacks
-    flasher.onLog = (msg, level) {
+    _currentFlasher!.onLog = (msg, level) {
       if (mounted) _addLog(msg.trimRight());
     };
-    flasher.onProgress = (current, total) {
+    _currentFlasher!.onProgress = (current, total) {
       if (mounted) setState(() => _progress = total > 0 ? current / total : 0);
     };
-    flasher.onState = (msg) {
+    _currentFlasher!.onState = (msg) {
       if (mounted) setState(() => _statusMessage = msg);
     };
-    return flasher;
+  }
+
+  Future<void> _stopOperation() async {
+    if (_currentFlasher != null) {
+      _addLog('Stopping operation...');
+      _currentFlasher!.isCancelled = true;
+      // We don't close the port here immediately to allow the loop to exit gracefully
+      // but if needed we could force it. The finally block in the runner will close it.
+    }
+  }
+
+  Future<bool> _ensurePortOpen() async {
+    final provider = context.read<SerialProvider>();
+    if (provider.isConnected) return true;
+
+    _addLog('Port not open. Attempting to open...');
+    // This usually triggers permission prompt on supported platforms
+    final ok = await provider.connect();
+    if (!ok) {
+      _addLog('ERROR: Failed to open port. Operation aborted.');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Please allow port permission to continue.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+    return ok;
   }
 
   Future<void> _runFlasherRead({bool fullRead = false}) async {
@@ -578,13 +652,20 @@ class _FlashToolScreenState extends State<FlashToolScreen> {
       _addLog('A flasher operation is already running.');
       return;
     }
-    final flasher = _createFlasher();
-    if (flasher == null) return;
-    _flasherRunning = true;
-    setState(() => _progress = 0);
+    
+    if (!await _ensurePortOpen()) return;
+
+    _createFlasher();
+    if (_currentFlasher == null) return;
+    
+    setState(() {
+      _flasherRunning = true;
+      _progress = 0;
+    });
+
     try {
-      await flasher.doRead(startSector: 0, sectors: 0x200000 ~/ 0x1000, fullRead: fullRead);
-      final result = flasher.getReadResult();
+      await _currentFlasher!.doRead(startSector: 0, sectors: 0x200000 ~/ 0x1000, fullRead: fullRead);
+      final result = _currentFlasher!.getReadResult();
       if (result != null) {
         _addLog('Read complete: ${result.length} bytes');
         final now = DateTime.now();
@@ -598,9 +679,7 @@ class _FlashToolScreenState extends State<FlashToolScreen> {
     } catch (e) {
       _addLog('Exception during read: $e');
     } finally {
-      await flasher.closePort();
-      flasher.dispose();
-      _flasherRunning = false;
+      await _cleanupFlasher();
     }
   }
 
@@ -609,19 +688,24 @@ class _FlashToolScreenState extends State<FlashToolScreen> {
       _addLog('A flasher operation is already running.');
       return;
     }
-    final flasher = _createFlasher();
-    if (flasher == null) return;
-    _flasherRunning = true;
-    setState(() => _progress = 0);
+    
+    if (!await _ensurePortOpen()) return;
+
+    _createFlasher();
+    if (_currentFlasher == null) return;
+
+    setState(() {
+      _flasherRunning = true;
+      _progress = 0;
+    });
+
     try {
-      final ok = await flasher.doErase(startSector: 0, sectors: 0x200000 ~/ 0x1000, eraseAll: true);
+      final ok = await _currentFlasher!.doErase(startSector: 0, sectors: 0x200000 ~/ 0x1000, eraseAll: true);
       _addLog(ok ? 'Erase complete!' : 'Erase failed or was cancelled.');
     } catch (e) {
       _addLog('Exception during erase: $e');
     } finally {
-      await flasher.closePort();
-      flasher.dispose();
-      _flasherRunning = false;
+      await _cleanupFlasher();
     }
   }
 
@@ -630,9 +714,39 @@ class _FlashToolScreenState extends State<FlashToolScreen> {
       _addLog('A flasher operation is already running.');
       return;
     }
+    
+    if (!await _ensurePortOpen()) return;
+    
     // For a real write, we'd load firmware data from storage.
     // This is the wiring scaffold — actual data loading comes from the firmware service.
     _addLog('Write firmware: not yet wired to firmware data loader.');
+    // IMPORTANT: Since we opened the port, we should close it if we abort here, 
+    // or just let the user close it. 
+    // Since we didn't start the flasher, we will just leave it open or close it?
+    // User expectation for "Write Firmware" scaffold: it logs and stops.
+    // We should probably close it to be consistent with other ops, or update UI state.
+    // For now, let's leave it open as there is no "operation" really running.
+  }
+  
+  Future<void> _cleanupFlasher() async {
+    if (_currentFlasher != null) {
+      await _currentFlasher!.closePort();
+      _currentFlasher!.dispose();
+      _currentFlasher = null;
+    }
+    
+    // Sync SerialProvider state because Flasher closed the underlying transport
+    if (mounted) {
+      final provider = context.read<SerialProvider>();
+      if (provider.isConnected) {
+        await provider.disconnect();
+      }
+      
+      setState(() {
+        _flasherRunning = false;
+        _statusMessage = '';
+      });
+    }
   }
 
   Widget _buildActionButtons() {
@@ -645,54 +759,71 @@ class _FlashToolScreenState extends State<FlashToolScreen> {
           icon: Icons.sync,
           label: 'Backup & Flash',
           color: Colors.deepOrange,
-          onPressed: () {
-            _addLog('=== Starting Backup & Flash ===');
-            _addLog('Platform: $_selectedPlatform');
-            _addLog('Firmware: ${_customFirmwarePath ?? _selectedFirmware}');
-            _runFlasherRead(fullRead: true);
-          },
+          onPressed: _flasherRunning
+              ? null
+              : () {
+                  _addLog('=== Starting Backup & Flash ===');
+                  _addLog('Platform: $_selectedPlatform');
+                  _addLog('Firmware: ${_customFirmwarePath ?? _selectedFirmware}');
+                  _runFlasherRead(fullRead: true);
+                },
         ),
         _buildActionButton(
           icon: Icons.download,
           label: 'Backup (Read) Only',
           color: Colors.blue,
-          onPressed: () {
-            _addLog('=== Starting Backup (Read) ===');
-            _addLog('Platform: $_selectedPlatform');
-            _runFlasherRead(fullRead: true);
-          },
+          onPressed: _flasherRunning
+              ? null
+              : () {
+                  _addLog('=== Starting Backup (Read) ===');
+                  _addLog('Platform: $_selectedPlatform');
+                  _runFlasherRead(fullRead: true);
+                },
         ),
         _buildActionButton(
           icon: Icons.upload,
           label: 'Write Firmware',
           color: Colors.teal,
-          onPressed: () {
-            _addLog('=== Starting Firmware Write ===');
-            _addLog('Platform: $_selectedPlatform');
-            _addLog('Firmware: ${_customFirmwarePath ?? _selectedFirmware}');
-            _runFlasherWrite();
-          },
+          onPressed: _flasherRunning
+              ? null
+              : () {
+                  _addLog('=== Starting Firmware Write ===');
+                  _addLog('Platform: $_selectedPlatform');
+                  _addLog('Firmware: ${_customFirmwarePath ?? _selectedFirmware}');
+                  _runFlasherWrite();
+                },
         ),
         _buildActionButton(
           icon: Icons.verified,
           label: 'Verify',
           color: Colors.indigo,
-          onPressed: () {
-            _addLog('=== Starting Verify ===');
-            _addLog('Platform: $_selectedPlatform');
-            _addLog('Verify not yet implemented.');
-          },
+          onPressed: _flasherRunning
+              ? null
+              : () {
+                  _addLog('=== Starting Verify ===');
+                  _addLog('Platform: $_selectedPlatform');
+                  _addLog('Verify not yet implemented.');
+                },
         ),
         _buildActionButton(
           icon: Icons.delete_forever,
           label: 'Erase',
           color: Colors.red.shade700,
-          onPressed: () {
-            _addLog('=== Starting Erase ===');
-            _addLog('Platform: $_selectedPlatform');
-            _runFlasherErase();
-          },
+          onPressed: _flasherRunning
+              ? null
+              : () {
+                  _addLog('=== Starting Erase ===');
+                  _addLog('Platform: $_selectedPlatform');
+                  _runFlasherErase();
+                },
         ),
+        if (_flasherRunning)
+          _buildActionButton(
+            icon: Icons.stop_circle,
+            label: 'STOP',
+            color: Colors.red.shade900,
+            onPressed: _stopOperation,
+          ),
       ],
     );
   }
@@ -701,7 +832,7 @@ class _FlashToolScreenState extends State<FlashToolScreen> {
     required IconData icon,
     required String label,
     required Color color,
-    required VoidCallback onPressed,
+    required VoidCallback? onPressed,
   }) {
     return ElevatedButton.icon(
       onPressed: onPressed,
@@ -709,10 +840,12 @@ class _FlashToolScreenState extends State<FlashToolScreen> {
       label: Text(label, style: const TextStyle(fontWeight: FontWeight.w600)),
       style: ElevatedButton.styleFrom(
         backgroundColor: color,
+        disabledBackgroundColor: color.withOpacity(0.3),
         foregroundColor: Colors.white,
+        disabledForegroundColor: Colors.white.withOpacity(0.5),
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        elevation: 3,
+        elevation: onPressed != null ? 3 : 0,
       ),
     );
   }

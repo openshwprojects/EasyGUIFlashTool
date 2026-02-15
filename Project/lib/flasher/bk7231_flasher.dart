@@ -883,8 +883,8 @@ class BK7231Flasher extends BaseFlasher {
 
     // 4K page align
     startSector = startSector & 0xfffff000;
-    addLogLine('Reading ${formatHex(sectors * sectorSize)} at ${formatHex(startSector)}, see progress bar for updates....');
     addLog('Going to start reading at offset ${formatHex(startSector)}...\n');
+    addLogLine('Reading ${formatHex(sectors * sectorSize)} at ${formatHex(startSector)}, see progress bar for updates....');
 
     for (int i = 0; i < sectors; i++) {
       if (isCancelled) return null;

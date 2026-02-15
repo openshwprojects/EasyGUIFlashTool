@@ -38,6 +38,10 @@ class SerialTransportDesktop implements SerialTransport {
 
   @override
   Future<bool> connect() async {
+    if (_port != null && _port!.isOpen) {
+      print('SerialTransportDesktop: Already open');
+      return true;
+    }
     try {
       // If no port is selected, try to use the first available port
       if (_selectedPortName == null) {

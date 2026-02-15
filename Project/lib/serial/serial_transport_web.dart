@@ -32,6 +32,10 @@ class SerialTransportWeb implements SerialTransport {
   @override
   Future<bool> connect() async {
     debugPrint("SerialTransportWeb.connect() started");
+    if (_port != null) {
+      debugPrint("SerialTransportWeb: Already connected");
+      return true;
+    }
     try {
       if (!checkSupport()) {
         debugPrint("Web Serial API not supported");

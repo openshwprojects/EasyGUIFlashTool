@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../serial/serial_io.dart';
 
 /// Provides serial port connectivity — open/close, port selection,
@@ -33,6 +34,55 @@ class SerialProvider extends ChangeNotifier {
 
   Future<void> _init() async {
     await _transport.init();
+    await _loadSettings();
+  }
+
+  Future<void> _loadSettings() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final savedPort = prefs.getString('serial_port');
+      final savedBaud = prefs.getInt('serial_baud');
+
+      if (savedPort != null) {
+        _selectedPort = savedPort;
+        // If the transport supports setting the port, set it now
+        if (_transport is dynamic) {
+          try {
+            (_transport as dynamic).setPort(savedPort);
+          } catch (_) {}
+        }
+      }
+
+      if (savedBaud != null) {
+        _baudRate = savedBaud;
+        // If the transport supports setting the baud, set it now
+        if (_transport is dynamic) {
+          try {
+            (_transport as dynamic).setBaudRate(savedBaud);
+          } catch (_) {}
+        }
+      }
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Error loading serial settings: $e');
+    }
+  }
+
+  Future<void> _saveSetting(String key, dynamic value) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (value is String) {
+        await prefs.setString(key, value);
+      } else if (value is int) {
+        await prefs.setInt(key, value);
+      } else if (value is bool) {
+        await prefs.setBool(key, value);
+      } else if (value is double) {
+        await prefs.setDouble(key, value);
+      }
+    } catch (e) {
+      debugPrint('Error saving serial setting $key: $e');
+    }
   }
 
   /// Get available ports (desktop only)
@@ -58,6 +108,7 @@ class SerialProvider extends ChangeNotifier {
   /// Set selected port (desktop only)
   void setPort(String portName) {
     _selectedPort = portName;
+    _saveSetting('serial_port', portName);
     try {
       if (_transport is dynamic) {
         final dynamic transport = _transport;
@@ -68,11 +119,13 @@ class SerialProvider extends ChangeNotifier {
     } catch (e) {
       debugPrint('setPort not supported on this platform');
     }
+    notifyListeners();
   }
 
   /// Set baud rate
   void setBaudRate(int baudRate) {
     _baudRate = baudRate;
+    _saveSetting('serial_baud', baudRate);
     try {
       if (_transport is dynamic) {
         final dynamic transport = _transport;
@@ -83,6 +136,7 @@ class SerialProvider extends ChangeNotifier {
     } catch (e) {
       debugPrint('setBaudRate not supported on this platform');
     }
+    notifyListeners();
   }
 
   /// Toggle DTR signal
