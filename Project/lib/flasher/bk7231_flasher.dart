@@ -93,21 +93,25 @@ class BK7231Flasher extends BaseFlasher {
     try {
       final sectors = data.length ~/ sectorSize;
       setProgress(0, sectors);
-      addLogLine('\nStarting write!');
+      addLogLine('Starting write!');
       if (!await _doGenericSetup()) return;
       if (!await _eraseRange(startSector, sectors)) return;
-      addLogLine('\nAll selected sectors erased!');
+      addLogLine('All selected sectors erased!');
+      addLogLine('Writing ${formatHex(sectors * sectorSize)} at ${formatHex(startSector)}, see progress bar for updates....');
       for (int sec = 0; sec < sectors; sec++) {
         if (isCancelled) return;
         final secAddr = startSector + sectorSize * sec;
-        addLog('${formatHex(secAddr)}...');
+        setState('Writing ${formatHex(secAddr)} out of ${formatHex(startSector + sectors * sectorSize)}...');
         if (!await _writeSector4K(secAddr, data, sectorSize * sec)) {
           setState('Write sector failed!');
           addError(' Writing sector ${formatHex(secAddr)} failed!\n');
           return;
         }
+        setProgress(sec + 1, sectors);
       }
+      addLogLine('Write finished, now verifying CRC...');
       if (!await _checkCRC(startSector, sectors, data)) return;
+      setState('Write success!');
       addSuccess('Write success!');
     } catch (e) {
       addError('Exception caught: $e\n');
@@ -632,7 +636,10 @@ class BK7231Flasher extends BaseFlasher {
   Future<bool> _writeSector4K(int addr, Uint8List data, int startOfs) async {
     if (!_isSectorModificationAllowed(addr)) return false;
     final txbuf = _buildCmdFlashWrite4K(addr, data, startOfs);
-    final rxbuf = await _startCmd(txbuf, rxLen: _rxLenFlashWrite4K);
+    // C# serial.Write blocks until TX completes, _then_ the 50ms timeout starts.
+    // Dart transport.write is non-blocking, so we must account for the TX time
+    // of the 4108-byte command (~356ms at 115200 baud) plus flash programming.
+    final rxbuf = await _startCmd(txbuf, rxLen: _rxLenFlashWrite4K, timeout: 1.0);
     if (rxbuf != null) return _checkRespondFlashWrite4K(rxbuf, addr);
     return false;
   }

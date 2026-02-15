@@ -11,6 +11,8 @@ import '../widgets/download_dialog.dart';
 import '../models/chip_platform.dart';
 import '../constants.dart';
 import '../flasher/bk7231_flasher.dart';
+import '../flasher/base_flasher.dart';
+import 'package:desktop_drop/desktop_drop.dart';
 
 class FlashToolScreen extends StatefulWidget {
   const FlashToolScreen({super.key});
@@ -35,6 +37,7 @@ class _FlashToolScreenState extends State<FlashToolScreen> {
   String? _customFirmwarePath;
   bool _isDragOver = false;
   bool _flasherRunning = false;
+  bool _hasError = false;
 
   // Firmware storage service (shared singleton)
   final FirmwareStorage _storage = FirmwareStorage();
@@ -454,134 +457,167 @@ class _FlashToolScreenState extends State<FlashToolScreen> {
   // ─── Section 3: Firmware Selection (with drag & drop) ───
 
   Widget _buildFirmwareSection() {
-    return DragTarget<Object>(
-      onWillAcceptWithDetails: (_) {
-        setState(() => _isDragOver = true);
-        return true;
+    return DropTarget(
+      onDragEntered: (_) => setState(() => _isDragOver = true),
+      onDragExited: (_) => setState(() => _isDragOver = false),
+      onDragDone: (details) async {
+        setState(() => _isDragOver = false);
+        if (details.files.isEmpty) return;
+        final droppedFile = details.files.first;
+        final fileName = droppedFile.name;
+        if (!fileName.toLowerCase().endsWith('.bin') &&
+            !fileName.toLowerCase().endsWith('.rbl')) {
+          _addLog('WARNING: Dropped file "$fileName" is not a .bin/.rbl — ignoring.');
+          return;
+        }
+        _addLog('Reading dropped file: $fileName ...');
+        try {
+          final bytes = await droppedFile.readAsBytes();
+          _addLog('Dropped file size: ${bytes.length} bytes');
+          await _storage.saveFile(kFirmwareStorageSubdir, fileName, bytes);
+          _addLog('Saved dropped firmware: $fileName');
+          await _refreshFirmwareList();
+          if (mounted && _availableFirmwares.contains(fileName)) {
+            setState(() {
+              _selectedFirmware = fileName;
+              _customFirmwarePath = null;
+            });
+            _saveUiSetting('ui_firmware', fileName);
+          }
+        } catch (e) {
+          _addLog('ERROR reading dropped file: $e');
+        }
       },
-      onLeave: (_) => setState(() => _isDragOver = false),
-      onAcceptWithDetails: (details) {
-        setState(() {
-          _isDragOver = false;
-          _customFirmwarePath = 'dropped_firmware.bin';
-          _selectedFirmware = '(none)';
-        });
-        _addLog('Firmware dropped: dropped_firmware.bin (placeholder)');
-      },
-      builder: (context, candidateData, rejectedData) {
-        return AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          decoration: BoxDecoration(
-            color: _isDragOver
-                ? Colors.deepOrange.withOpacity(0.15)
-                : Theme.of(context).colorScheme.surfaceContainerHighest,
-            borderRadius: BorderRadius.circular(12),
-            border: _isDragOver
-                ? Border.all(color: Colors.deepOrange, width: 2)
-                : null,
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                _isDragOver ? Icons.file_download : Icons.sd_storage,
-                size: 20,
-                color: _isDragOver ? Colors.deepOrange : null,
-              ),
-              const SizedBox(width: 10),
-              Text(
-                _isDragOver ? 'Drop file here' : 'Firmware:',
-                style: TextStyle(
-                  fontWeight: FontWeight.w600,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: _isDragOver
+              ? Colors.deepOrange.withOpacity(0.15)
+              : Theme.of(context).colorScheme.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(12),
+          border: _isDragOver
+              ? Border.all(color: Colors.deepOrange, width: 2)
+              : null,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  _isDragOver ? Icons.file_download : Icons.sd_storage,
+                  size: 20,
                   color: _isDragOver ? Colors.deepOrange : null,
                 ),
-              ),
-              if (!_isDragOver) ...[
-                const SizedBox(width: 12),
-                DropdownButton<String>(
-                  value: _selectedFirmware,
-                  underline: const SizedBox(),
-                  items: _availableFirmwares.map((f) {
-                    return DropdownMenuItem(value: f, child: Text(f));
-                  }).toList(),
-                  onChanged: (value) {
-                    if (value != null) {
-                      setState(() {
-                        _selectedFirmware = value;
-                        _customFirmwarePath = null;
-                      });
-                      _saveUiSetting('ui_firmware', value);
-                      _addLog('Firmware selected: $value');
-                    }
-                  },
+                const SizedBox(width: 10),
+                Text(
+                  _isDragOver ? 'Drop file here' : 'Firmware:',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: _isDragOver ? Colors.deepOrange : null,
+                  ),
                 ),
-                if (_customFirmwarePath != null) ...[
-                  const SizedBox(width: 8),
-                  Tooltip(
-                    message: _customFirmwarePath!,
-                    child: Chip(
-                      label: Text(
-                        _customFirmwarePath!,
-                        style: const TextStyle(fontSize: 12),
-                        overflow: TextOverflow.ellipsis,
+                if (!_isDragOver) ...[
+                  const SizedBox(width: 12),
+                  DropdownButton<String>(
+                    value: _selectedFirmware,
+                    underline: const SizedBox(),
+                    items: _availableFirmwares.map((f) {
+                      return DropdownMenuItem(value: f, child: Text(f));
+                    }).toList(),
+                    onChanged: (value) {
+                      if (value != null) {
+                        setState(() {
+                          _selectedFirmware = value;
+                          _customFirmwarePath = null;
+                        });
+                        _saveUiSetting('ui_firmware', value);
+                        _addLog('Firmware selected: $value');
+                      }
+                    },
+                  ),
+                  if (_customFirmwarePath != null) ...[
+                    const SizedBox(width: 8),
+                    Tooltip(
+                      message: _customFirmwarePath!,
+                      child: Chip(
+                        label: Text(
+                          _customFirmwarePath!,
+                          style: const TextStyle(fontSize: 12),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        deleteIcon: const Icon(Icons.close, size: 16),
+                        onDeleted: () {
+                          setState(() => _customFirmwarePath = null);
+                          _addLog('Custom firmware cleared.');
+                        },
                       ),
-                      deleteIcon: const Icon(Icons.close, size: 16),
-                      onDeleted: () {
-                        setState(() => _customFirmwarePath = null);
-                        _addLog('Custom firmware cleared.');
-                      },
+                    ),
+                  ],
+                  const SizedBox(width: 8),
+                  ElevatedButton.icon(
+                    onPressed: () {
+                      // Placeholder — will integrate file_picker later
+                      setState(() {
+                        _customFirmwarePath = 'custom_firmware.bin';
+                        _selectedFirmware = '(none)';
+                      });
+                      _addLog('Open firmware file: custom_firmware.bin (placeholder)');
+                    },
+                    icon: const Icon(Icons.folder_open, size: 18),
+                    label: const Text('Open'),
+                    style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  ElevatedButton.icon(
+                    onPressed: () async {
+                      final result = await DownloadDialog.show(
+                        context,
+                        platform: _selectedPlatform,
+                        storage: _storage,
+                      );
+                      if (result != null) {
+                        _addLog('Downloaded: ${result.fileName}');
+                        await _refreshFirmwareList();
+                        // Auto-select the newly downloaded firmware
+                        if (mounted && _availableFirmwares.contains(result.fileName)) {
+                          setState(() {
+                            _selectedFirmware = result.fileName;
+                            _customFirmwarePath = null;
+                          });
+                          _saveUiSetting('ui_firmware', result.fileName);
+                        }
+                      }
+                    },
+                    icon: const Icon(Icons.cloud_download, size: 18),
+                    label: const Text('Download'),
+                    style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                     ),
                   ),
                 ],
-                const SizedBox(width: 8),
-                ElevatedButton.icon(
-                  onPressed: () {
-                    // Placeholder — will integrate file_picker later
-                    setState(() {
-                      _customFirmwarePath = 'custom_firmware.bin';
-                      _selectedFirmware = '(none)';
-                    });
-                    _addLog('Open firmware file: custom_firmware.bin (placeholder)');
-                  },
-                  icon: const Icon(Icons.folder_open, size: 18),
-                  label: const Text('Open'),
-                  style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                  ),
-                ),
-                const SizedBox(width: 6),
-                ElevatedButton.icon(
-                  onPressed: () async {
-                    final result = await DownloadDialog.show(
-                      context,
-                      platform: _selectedPlatform,
-                      storage: _storage,
-                    );
-                    if (result != null) {
-                      _addLog('Downloaded: ${result.fileName}');
-                      await _refreshFirmwareList();
-                      // Auto-select the newly downloaded firmware
-                      if (mounted && _availableFirmwares.contains(result.fileName)) {
-                        setState(() {
-                          _selectedFirmware = result.fileName;
-                          _customFirmwarePath = null;
-                        });
-                        _saveUiSetting('ui_firmware', result.fileName);
-                      }
-                    }
-                  },
-                  icon: const Icon(Icons.cloud_download, size: 18),
-                  label: const Text('Download'),
-                  style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                  ),
-                ),
               ],
-            ],
-          ),
-        );
-      },
+            ),
+            const SizedBox(height: 1),
+            Text(
+              'You can also drag and drop a .bin file here.',
+              style: TextStyle(
+                fontSize: 10,
+                fontStyle: FontStyle.italic,
+                height: 1.0,
+                color: _isDragOver
+                    ? Colors.deepOrange.withOpacity(0.8)
+                    : Colors.grey.shade500,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -607,7 +643,12 @@ class _FlashToolScreenState extends State<FlashToolScreen> {
     );
     // Wire logging callbacks
     _currentFlasher!.onLog = (msg, level) {
-      if (mounted) _addLog(msg.trimRight());
+      if (mounted) {
+        _addLog(msg.trimRight());
+        if (level == LogLevel.error && !_hasError) {
+          setState(() => _hasError = true);
+        }
+      }
     };
     _currentFlasher!.onProgress = (current, total) {
       if (mounted) setState(() => _progress = total > 0 ? current / total : 0);
@@ -661,6 +702,7 @@ class _FlashToolScreenState extends State<FlashToolScreen> {
     setState(() {
       _flasherRunning = true;
       _progress = 0;
+      _hasError = false;
     });
 
     try {
@@ -697,6 +739,7 @@ class _FlashToolScreenState extends State<FlashToolScreen> {
     setState(() {
       _flasherRunning = true;
       _progress = 0;
+      _hasError = false;
     });
 
     try {
@@ -716,16 +759,38 @@ class _FlashToolScreenState extends State<FlashToolScreen> {
     }
     
     if (!await _ensurePortOpen()) return;
-    
-    // For a real write, we'd load firmware data from storage.
-    // This is the wiring scaffold — actual data loading comes from the firmware service.
-    _addLog('Write firmware: not yet wired to firmware data loader.');
-    // IMPORTANT: Since we opened the port, we should close it if we abort here, 
-    // or just let the user close it. 
-    // Since we didn't start the flasher, we will just leave it open or close it?
-    // User expectation for "Write Firmware" scaffold: it logs and stops.
-    // We should probably close it to be consistent with other ops, or update UI state.
-    // For now, let's leave it open as there is no "operation" really running.
+
+    // Load firmware bytes
+    if (_selectedFirmware == '(none)' && _customFirmwarePath == null) {
+      _addLog('ERROR: No firmware selected. Please select or download a firmware first.');
+      return;
+    }
+    final fwName = _customFirmwarePath ?? _selectedFirmware;
+    _addLog('Loading firmware: $fwName ...');
+    final firmwareData = await _storage.readFile(kFirmwareStorageSubdir, fwName);
+    if (firmwareData == null || firmwareData.isEmpty) {
+      _addLog('ERROR: Could not read firmware file "$fwName".');
+      return;
+    }
+    _addLog('Firmware loaded: ${firmwareData.length} bytes');
+
+    _createFlasher();
+    if (_currentFlasher == null) return;
+
+    setState(() {
+      _flasherRunning = true;
+      _progress = 0;
+      _hasError = false;
+    });
+
+    try {
+      await _currentFlasher!.doWrite(0, firmwareData);
+      _addLog('Write operation finished.');
+    } catch (e) {
+      _addLog('Exception during write: $e');
+    } finally {
+      await _cleanupFlasher();
+    }
   }
   
   Future<void> _cleanupFlasher() async {
@@ -744,7 +809,7 @@ class _FlashToolScreenState extends State<FlashToolScreen> {
       
       setState(() {
         _flasherRunning = false;
-        _statusMessage = '';
+        if (!_hasError) _statusMessage = '';
       });
     }
   }
@@ -859,10 +924,24 @@ class _FlashToolScreenState extends State<FlashToolScreen> {
       children: [
         Row(
           children: [
-            Text(_statusMessage.isNotEmpty ? _statusMessage : 'Progress:', 
-                 style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, fontFamily: 'monospace')),
-            const Spacer(),
-            Text('$pct%', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+            Expanded(
+              child: Text(
+                _statusMessage.isNotEmpty ? _statusMessage : 'Progress:', 
+                style: TextStyle(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 13,
+                  fontFamily: 'monospace',
+                  color: _hasError ? Colors.red.shade300 : null,
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text('$pct%', style: TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 13,
+              color: _hasError ? Colors.red.shade300 : null,
+            )),
           ],
         ),
         const SizedBox(height: 6),
@@ -873,7 +952,7 @@ class _FlashToolScreenState extends State<FlashToolScreen> {
             minHeight: 14,
             backgroundColor: Colors.grey.shade800,
             valueColor: AlwaysStoppedAnimation<Color>(
-              _progress >= 1.0 ? Colors.green : Colors.deepOrange,
+              _hasError ? Colors.red : (_progress >= 1.0 ? Colors.green : Colors.deepOrange),
             ),
           ),
         ),
