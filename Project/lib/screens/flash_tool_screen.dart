@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/services.dart';
 import 'dart:io' show Platform;
 import 'package:provider/provider.dart';
 import '../providers/serial_provider.dart';
@@ -24,6 +25,7 @@ class _FlashToolScreenState extends State<FlashToolScreen> {
   String _selectedPlatform = 'BK7231';
   String _selectedFirmware = '(none)';
   String? _customFirmwarePath;
+  bool _isDragOver = false;
 
   static const List<String> _platforms = [
     'BK7231',
@@ -89,13 +91,7 @@ class _FlashToolScreenState extends State<FlashToolScreen> {
             const Text('EasyGUI Flash Tool'),
           ],
         ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.delete_sweep),
-            onPressed: () => setState(() => _logLines.clear()),
-            tooltip: 'Clear log',
-          ),
-        ],
+        actions: const [],
       ),
       body: Padding(
         padding: const EdgeInsets.all(16),
@@ -135,9 +131,9 @@ class _FlashToolScreenState extends State<FlashToolScreen> {
     );
   }
 
-  // ─── Row 1: COM Port + Baud + Open/Close + Connection State ───
+  // ─── Section 1: COM Port + Baud + Open/Close + Connection State ───
 
-  Widget _buildConnectionRow() {
+  Widget _buildConnectionSection() {
     return Consumer<SerialProvider>(
       builder: (context, provider, _) {
         return Container(
@@ -355,9 +351,9 @@ class _FlashToolScreenState extends State<FlashToolScreen> {
     );
   }
 
-  // ─── Row 2: Platform Selection ───
+  // ─── Section 2: Platform Selection ───
 
-  Widget _buildPlatformRow() {
+  Widget _buildPlatformSection() {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
@@ -365,6 +361,7 @@ class _FlashToolScreenState extends State<FlashToolScreen> {
         borderRadius: BorderRadius.circular(12),
       ),
       child: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
           const Icon(Icons.memory, size: 20),
           const SizedBox(width: 10),
@@ -388,64 +385,121 @@ class _FlashToolScreenState extends State<FlashToolScreen> {
     );
   }
 
-  // ─── Row 3: Firmware Selection ───
+  // ─── Section 3: Firmware Selection (with drag & drop) ───
 
-  Widget _buildFirmwareRow() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.sd_storage, size: 20),
-          const SizedBox(width: 10),
-          const Text('Firmware:', style: TextStyle(fontWeight: FontWeight.w600)),
-          const SizedBox(width: 12),
-          DropdownButton<String>(
-            value: _selectedFirmware,
-            underline: const SizedBox(),
-            items: _firmwarePlaceholders.map((f) {
-              return DropdownMenuItem(value: f, child: Text(f));
-            }).toList(),
-            onChanged: (value) {
-              if (value != null) {
-                setState(() {
-                  _selectedFirmware = value;
-                  _customFirmwarePath = null;
-                });
-                _addLog('Firmware selected: $value');
-              }
-            },
+  Widget _buildFirmwareSection() {
+    return DragTarget<Object>(
+      onWillAcceptWithDetails: (_) {
+        setState(() => _isDragOver = true);
+        return true;
+      },
+      onLeave: (_) => setState(() => _isDragOver = false),
+      onAcceptWithDetails: (details) {
+        setState(() {
+          _isDragOver = false;
+          _customFirmwarePath = 'dropped_firmware.bin';
+          _selectedFirmware = '(none)';
+        });
+        _addLog('Firmware dropped: dropped_firmware.bin (placeholder)');
+      },
+      builder: (context, candidateData, rejectedData) {
+        return AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: _isDragOver
+                ? Colors.deepOrange.withOpacity(0.15)
+                : Theme.of(context).colorScheme.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(12),
+            border: _isDragOver
+                ? Border.all(color: Colors.deepOrange, width: 2)
+                : null,
           ),
-          const SizedBox(width: 12),
-          if (_customFirmwarePath != null)
-            Expanded(
-              child: Text(
-                _customFirmwarePath!,
-                style: const TextStyle(fontSize: 12, color: Colors.grey),
-                overflow: TextOverflow.ellipsis,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                _isDragOver ? Icons.file_download : Icons.sd_storage,
+                size: 20,
+                color: _isDragOver ? Colors.deepOrange : null,
               ),
-            ),
-          const Spacer(),
-          ElevatedButton.icon(
-            onPressed: () {
-              // Placeholder — will integrate file_picker later
-              setState(() {
-                _customFirmwarePath = 'custom_firmware.bin';
-                _selectedFirmware = '(none)';
-              });
-              _addLog('Open firmware file: custom_firmware.bin (placeholder)');
-            },
-            icon: const Icon(Icons.folder_open, size: 18),
-            label: const Text('Open'),
-            style: ElevatedButton.styleFrom(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-            ),
+              const SizedBox(width: 10),
+              Text(
+                _isDragOver ? 'Drop file here' : 'Firmware:',
+                style: TextStyle(
+                  fontWeight: FontWeight.w600,
+                  color: _isDragOver ? Colors.deepOrange : null,
+                ),
+              ),
+              if (!_isDragOver) ...[
+                const SizedBox(width: 12),
+                DropdownButton<String>(
+                  value: _selectedFirmware,
+                  underline: const SizedBox(),
+                  items: _firmwarePlaceholders.map((f) {
+                    return DropdownMenuItem(value: f, child: Text(f));
+                  }).toList(),
+                  onChanged: (value) {
+                    if (value != null) {
+                      setState(() {
+                        _selectedFirmware = value;
+                        _customFirmwarePath = null;
+                      });
+                      _addLog('Firmware selected: $value');
+                    }
+                  },
+                ),
+                if (_customFirmwarePath != null) ...[
+                  const SizedBox(width: 8),
+                  Tooltip(
+                    message: _customFirmwarePath!,
+                    child: Chip(
+                      label: Text(
+                        _customFirmwarePath!,
+                        style: const TextStyle(fontSize: 12),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      deleteIcon: const Icon(Icons.close, size: 16),
+                      onDeleted: () {
+                        setState(() => _customFirmwarePath = null);
+                        _addLog('Custom firmware cleared.');
+                      },
+                    ),
+                  ),
+                ],
+                const SizedBox(width: 8),
+                ElevatedButton.icon(
+                  onPressed: () {
+                    // Placeholder — will integrate file_picker later
+                    setState(() {
+                      _customFirmwarePath = 'custom_firmware.bin';
+                      _selectedFirmware = '(none)';
+                    });
+                    _addLog('Open firmware file: custom_firmware.bin (placeholder)');
+                  },
+                  icon: const Icon(Icons.folder_open, size: 18),
+                  label: const Text('Open'),
+                  style: ElevatedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  ),
+                ),
+                const SizedBox(width: 6),
+                ElevatedButton.icon(
+                  onPressed: () {
+                    // Placeholder — will integrate URL download later
+                    _addLog('Download firmware... (placeholder)');
+                  },
+                  icon: const Icon(Icons.cloud_download, size: 18),
+                  label: const Text('Download'),
+                  style: ElevatedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  ),
+                ),
+              ],
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -486,6 +540,26 @@ class _FlashToolScreenState extends State<FlashToolScreen> {
             _addLog('=== Starting Firmware Write ===');
             _addLog('Platform: $_selectedPlatform');
             _addLog('Firmware: ${_customFirmwarePath ?? _selectedFirmware}');
+            _simulateProgress();
+          },
+        ),
+        _buildActionButton(
+          icon: Icons.verified,
+          label: 'Verify',
+          color: Colors.indigo,
+          onPressed: () {
+            _addLog('=== Starting Verify ===');
+            _addLog('Platform: $_selectedPlatform');
+            _simulateProgress();
+          },
+        ),
+        _buildActionButton(
+          icon: Icons.delete_forever,
+          label: 'Erase',
+          color: Colors.red.shade700,
+          onPressed: () {
+            _addLog('=== Starting Erase ===');
+            _addLog('Platform: $_selectedPlatform');
             _simulateProgress();
           },
         ),
@@ -566,35 +640,88 @@ class _FlashToolScreenState extends State<FlashToolScreen> {
   // ─── Log Field ───
 
   Widget _buildLogField() {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.black87,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: Colors.grey.shade700),
-      ),
-      child: _logLines.isEmpty
-          ? const Center(
-              child: Text(
-                'Log output will appear here.',
-                style: TextStyle(color: Colors.grey, fontStyle: FontStyle.italic),
-              ),
-            )
-          : ListView.builder(
-              controller: _logScrollController,
-              padding: const EdgeInsets.all(10),
-              itemCount: _logLines.length,
-              itemBuilder: (context, index) {
-                return Text(
-                  _logLines[index],
-                  style: const TextStyle(
-                    fontFamily: 'monospace',
-                    fontSize: 12,
-                    color: Colors.greenAccent,
-                    height: 1.5,
-                  ),
-                );
-              },
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // Log toolbar
+        Row(
+          children: [
+            const Icon(Icons.terminal, size: 16, color: Colors.grey),
+            const SizedBox(width: 6),
+            const Text('Log', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+            const Spacer(),
+            IconButton(
+              icon: const Icon(Icons.copy, size: 18),
+              onPressed: _logLines.isEmpty
+                  ? null
+                  : () {
+                      Clipboard.setData(ClipboardData(text: _logLines.join('\n')));
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Log copied to clipboard'),
+                          duration: Duration(seconds: 1),
+                        ),
+                      );
+                    },
+              tooltip: 'Copy log to clipboard',
+              visualDensity: VisualDensity.compact,
             ),
+            IconButton(
+              icon: const Icon(Icons.save_alt, size: 18),
+              onPressed: _logLines.isEmpty
+                  ? null
+                  : () {
+                      // Placeholder — will integrate file save / download later
+                      _addLog('Save log... (placeholder)');
+                    },
+              tooltip: 'Save log to file',
+              visualDensity: VisualDensity.compact,
+            ),
+            IconButton(
+              icon: const Icon(Icons.delete_sweep, size: 18),
+              onPressed: _logLines.isEmpty
+                  ? null
+                  : () => setState(() => _logLines.clear()),
+              tooltip: 'Clear log',
+              visualDensity: VisualDensity.compact,
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        // Log body
+        Expanded(
+          child: Container(
+            decoration: BoxDecoration(
+              color: Colors.black87,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: Colors.grey.shade700),
+            ),
+            child: _logLines.isEmpty
+                ? const Center(
+                    child: Text(
+                      'Log output will appear here.',
+                      style: TextStyle(color: Colors.grey, fontStyle: FontStyle.italic),
+                    ),
+                  )
+                : ListView.builder(
+                    controller: _logScrollController,
+                    padding: const EdgeInsets.all(10),
+                    itemCount: _logLines.length,
+                    itemBuilder: (context, index) {
+                      return Text(
+                        _logLines[index],
+                        style: const TextStyle(
+                          fontFamily: 'monospace',
+                          fontSize: 12,
+                          color: Colors.greenAccent,
+                          height: 1.5,
+                        ),
+                      );
+                    },
+                  ),
+          ),
+        ),
+      ],
     );
   }
 }
