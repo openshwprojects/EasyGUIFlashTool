@@ -21,6 +21,9 @@ class SerialProvider extends ChangeNotifier {
   bool get dtr => _dtr;
   bool get rts => _rts;
 
+  /// Underlying transport — used by the flasher for direct protocol I/O.
+  SerialTransport get transport => _transport;
+
   /// Stream of raw bytes from the serial port (for consumers to listen to).
   Stream<Uint8List> get dataStream => _transport.stream;
 

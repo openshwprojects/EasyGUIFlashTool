@@ -10,5 +10,6 @@ abstract class SerialTransport {
   void write(Uint8List data);
   Future<void> setDTR(bool value);
   Future<void> setRTS(bool value);
+  Future<void> setBaudRate(int baudRate);
   void dispose();
 }

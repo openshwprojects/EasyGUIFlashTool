@@ -91,6 +91,17 @@ class SerialTransportAndroid implements SerialTransport {
   }
 
   @override
+  Future<void> setBaudRate(int baudRate) async {
+    if (_port == null) return;
+    await _port!.setPortParameters(
+      baudRate,
+      UsbPort.DATABITS_8,
+      UsbPort.STOPBITS_1,
+      UsbPort.PARITY_NONE,
+    );
+  }
+
+  @override
   void dispose() {
     disconnect();
     _usbEventSub?.cancel();

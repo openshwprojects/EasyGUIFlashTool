@@ -2,6 +2,9 @@
 ///
 /// Each variant carries its display name and knows how to derive its
 /// firmware-file prefix (mirroring the C# `FormMain.getFirmwarePrefix`).
+
+import '../flasher/base_flasher.dart';
+
 enum ChipPlatform {
   bk7231t('BK7231T'),
   bk7231n('BK7231N'),
@@ -50,4 +53,24 @@ enum ChipPlatform {
 
   @override
   String toString() => displayName;
+}
+
+/// Extension to convert UI [ChipPlatform] to the flasher's [BKType] enum.
+/// Returns null for non-BK platforms (BL602, W600, ESP32, etc.).
+///
+/// Import: `import '../flasher/base_flasher.dart';`
+extension ChipPlatformFlasher on ChipPlatform {
+  BKType? get bkType {
+    switch (this) {
+      case ChipPlatform.bk7231t: return BKType.bk7231t;
+      case ChipPlatform.bk7231n: return BKType.bk7231n;
+      case ChipPlatform.bk7231m: return BKType.bk7231m;
+      case ChipPlatform.bk7238:  return BKType.bk7238;
+      case ChipPlatform.bk7236:  return BKType.bk7236;
+      case ChipPlatform.bk7252:  return BKType.bk7252;
+      case ChipPlatform.bk7252n: return BKType.bk7252n;
+      case ChipPlatform.bk7258:  return BKType.bk7258;
+      default: return null;
+    }
+  }
 }

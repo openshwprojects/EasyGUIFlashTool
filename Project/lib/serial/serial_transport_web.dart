@@ -172,6 +172,32 @@ class SerialTransportWeb implements SerialTransport {
   }
 
   @override
+  Future<void> setBaudRate(int baudRate) async {
+    if (_port == null) return;
+    try {
+      // Web Serial API does not support changing baud in-place.
+      // We must close and reopen the port.
+      _isReading = false;
+      if (_reader != null) {
+        try { await (_reader!.callMethod('cancel'.toJS) as JSPromise).toDart; } catch (_) {}
+        _reader = null;
+      }
+      if (_writer != null) {
+        try { await (_writer!.callMethod('close'.toJS) as JSPromise).toDart; } catch (_) {}
+        _writer = null;
+      }
+      await (_port!.callMethod('close'.toJS) as JSPromise).toDart;
+
+      final options = JSObject();
+      options.setProperty('baudRate'.toJS, baudRate.toJS);
+      await (_port!.callMethod('open'.toJS, options) as JSPromise).toDart;
+      _startReading();
+    } catch (e) {
+      debugPrint('setBaudRate error: $e');
+    }
+  }
+
+  @override
   void dispose() {
     disconnect();
     _streamController.close();

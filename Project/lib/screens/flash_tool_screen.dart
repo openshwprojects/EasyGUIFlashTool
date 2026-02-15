@@ -5,9 +5,11 @@ import 'dart:io' show Platform;
 import 'package:provider/provider.dart';
 import '../providers/serial_provider.dart';
 import '../services/firmware_storage.dart';
+import '../services/file_saver.dart';
 import '../widgets/download_dialog.dart';
 import '../models/chip_platform.dart';
 import '../constants.dart';
+import '../flasher/bk7231_flasher.dart';
 
 class FlashToolScreen extends StatefulWidget {
   const FlashToolScreen({super.key});
@@ -18,6 +20,7 @@ class FlashToolScreen extends StatefulWidget {
 
 class _FlashToolScreenState extends State<FlashToolScreen> {
   final ScrollController _logScrollController = ScrollController();
+  String _statusMessage = '';
   final TextEditingController _customBaudController = TextEditingController();
 
   final List<int> _commonBaudRates = kCommonBaudRates;
@@ -30,6 +33,7 @@ class _FlashToolScreenState extends State<FlashToolScreen> {
   String _selectedFirmware = '(none)';
   String? _customFirmwarePath;
   bool _isDragOver = false;
+  bool _flasherRunning = false;
 
   // Firmware storage service (shared singleton)
   final FirmwareStorage _storage = FirmwareStorage();
@@ -542,6 +546,95 @@ class _FlashToolScreenState extends State<FlashToolScreen> {
 
   // ─── Action Buttons ───
 
+  // ── Flasher integration helpers ──────────────────────────────────────
+
+  BK7231Flasher? _createFlasher() {
+    final provider = context.read<SerialProvider>();
+    final bkType = _selectedPlatform.bkType;
+    if (bkType == null) {
+      _addLog('ERROR: ${_selectedPlatform.displayName} is not a BK-family chip — flasher not available.');
+      return null;
+    }
+    final flasher = BK7231Flasher(
+      transport: provider.transport,
+      chipType: bkType,
+      baudrate: provider.baudRate,
+    );
+    // Wire logging callbacks
+    flasher.onLog = (msg, level) {
+      if (mounted) _addLog(msg.trimRight());
+    };
+    flasher.onProgress = (current, total) {
+      if (mounted) setState(() => _progress = total > 0 ? current / total : 0);
+    };
+    flasher.onState = (msg) {
+      if (mounted) setState(() => _statusMessage = msg);
+    };
+    return flasher;
+  }
+
+  Future<void> _runFlasherRead({bool fullRead = false}) async {
+    if (_flasherRunning) {
+      _addLog('A flasher operation is already running.');
+      return;
+    }
+    final flasher = _createFlasher();
+    if (flasher == null) return;
+    _flasherRunning = true;
+    setState(() => _progress = 0);
+    try {
+      await flasher.doRead(startSector: 0, sectors: 0x200000 ~/ 0x1000, fullRead: fullRead);
+      final result = flasher.getReadResult();
+      if (result != null) {
+        _addLog('Read complete: ${result.length} bytes');
+        final now = DateTime.now();
+        final timestamp = '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}_${now.hour.toString().padLeft(2, '0')}${now.minute.toString().padLeft(2, '0')}';
+        final filename = 'read_result_$timestamp.bin';
+        await saveFile(filename, result);
+        _addLog('File saved/downloaded: $filename');
+      } else {
+        _addLog('Read failed or was cancelled.');
+      }
+    } catch (e) {
+      _addLog('Exception during read: $e');
+    } finally {
+      await flasher.closePort();
+      flasher.dispose();
+      _flasherRunning = false;
+    }
+  }
+
+  Future<void> _runFlasherErase() async {
+    if (_flasherRunning) {
+      _addLog('A flasher operation is already running.');
+      return;
+    }
+    final flasher = _createFlasher();
+    if (flasher == null) return;
+    _flasherRunning = true;
+    setState(() => _progress = 0);
+    try {
+      final ok = await flasher.doErase(startSector: 0, sectors: 0x200000 ~/ 0x1000, eraseAll: true);
+      _addLog(ok ? 'Erase complete!' : 'Erase failed or was cancelled.');
+    } catch (e) {
+      _addLog('Exception during erase: $e');
+    } finally {
+      await flasher.closePort();
+      flasher.dispose();
+      _flasherRunning = false;
+    }
+  }
+
+  Future<void> _runFlasherWrite() async {
+    if (_flasherRunning) {
+      _addLog('A flasher operation is already running.');
+      return;
+    }
+    // For a real write, we'd load firmware data from storage.
+    // This is the wiring scaffold — actual data loading comes from the firmware service.
+    _addLog('Write firmware: not yet wired to firmware data loader.');
+  }
+
   Widget _buildActionButtons() {
     return Wrap(
       spacing: 12,
@@ -556,7 +649,7 @@ class _FlashToolScreenState extends State<FlashToolScreen> {
             _addLog('=== Starting Backup & Flash ===');
             _addLog('Platform: $_selectedPlatform');
             _addLog('Firmware: ${_customFirmwarePath ?? _selectedFirmware}');
-            _simulateProgress();
+            _runFlasherRead(fullRead: true);
           },
         ),
         _buildActionButton(
@@ -566,7 +659,7 @@ class _FlashToolScreenState extends State<FlashToolScreen> {
           onPressed: () {
             _addLog('=== Starting Backup (Read) ===');
             _addLog('Platform: $_selectedPlatform');
-            _simulateProgress();
+            _runFlasherRead(fullRead: true);
           },
         ),
         _buildActionButton(
@@ -577,7 +670,7 @@ class _FlashToolScreenState extends State<FlashToolScreen> {
             _addLog('=== Starting Firmware Write ===');
             _addLog('Platform: $_selectedPlatform');
             _addLog('Firmware: ${_customFirmwarePath ?? _selectedFirmware}');
-            _simulateProgress();
+            _runFlasherWrite();
           },
         ),
         _buildActionButton(
@@ -587,7 +680,7 @@ class _FlashToolScreenState extends State<FlashToolScreen> {
           onPressed: () {
             _addLog('=== Starting Verify ===');
             _addLog('Platform: $_selectedPlatform');
-            _simulateProgress();
+            _addLog('Verify not yet implemented.');
           },
         ),
         _buildActionButton(
@@ -597,7 +690,7 @@ class _FlashToolScreenState extends State<FlashToolScreen> {
           onPressed: () {
             _addLog('=== Starting Erase ===');
             _addLog('Platform: $_selectedPlatform');
-            _simulateProgress();
+            _runFlasherErase();
           },
         ),
       ],
@@ -624,26 +717,6 @@ class _FlashToolScreenState extends State<FlashToolScreen> {
     );
   }
 
-  void _simulateProgress() {
-    setState(() => _progress = 0.0);
-    Future.delayed(const Duration(milliseconds: 300), () {
-      if (mounted) setState(() => _progress = 0.15);
-      _addLog('Connecting...');
-    });
-    Future.delayed(const Duration(milliseconds: 800), () {
-      if (mounted) setState(() => _progress = 0.35);
-      _addLog('Reading device info...');
-    });
-    Future.delayed(const Duration(milliseconds: 1500), () {
-      if (mounted) setState(() => _progress = 0.65);
-      _addLog('Processing...');
-    });
-    Future.delayed(const Duration(milliseconds: 2200), () {
-      if (mounted) setState(() => _progress = 1.0);
-      _addLog('Done (placeholder simulation).');
-    });
-  }
-
   // ─── Progress Bar ───
 
   Widget _buildProgressBar() {
@@ -653,7 +726,8 @@ class _FlashToolScreenState extends State<FlashToolScreen> {
       children: [
         Row(
           children: [
-            const Text('Progress:', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+            Text(_statusMessage.isNotEmpty ? _statusMessage : 'Progress:', 
+                 style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, fontFamily: 'monospace')),
             const Spacer(),
             Text('$pct%', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
           ],

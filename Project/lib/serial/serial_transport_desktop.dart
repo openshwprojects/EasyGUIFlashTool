@@ -142,20 +142,39 @@ class SerialTransportDesktop implements SerialTransport {
 
   @override
   Future<void> setRTS(bool value) async {
-    if (_port == null || !_port!.isOpen) return;
+    try {
+      final config = _port?.config;
+      if (config != null) {
+        config.rts = value ? SerialPortRts.on : SerialPortRts.off;
+        _port!.config = config;
+        config.dispose();
+      }
+    } catch (e) {
+      // Some platforms may not support RTS
+    }
+  }
+
+  @override
+  Future<void> setBaudRate(int baudRate) async {
+    if (_port == null) return;
+    _baudRate = baudRate;
     try {
       final config = _port!.config;
-      config.rts = value ? SerialPortRts.on : SerialPortRts.off;
+      config.baudRate = baudRate;
       _port!.config = config;
       config.dispose();
     } catch (e) {
-      print('setRTS error: $e');
+      // Fallback: will be used on next connect
     }
   }
 
   @override
   void dispose() {
-    disconnect();
+    _reader?.close();
+    _reader = null;
+    _port?.close();
+    _port?.dispose();
+    _port = null;
     _streamController.close();
   }
 }

@@ -27,6 +27,9 @@ class SerialTransportImpl implements SerialTransport {
   Future<void> setRTS(bool value) async {}
 
   @override
+  Future<void> setBaudRate(int baudRate) async {}
+
+  @override
   void dispose() {}
 }
 
