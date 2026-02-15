@@ -2,6 +2,8 @@ import 'dart:typed_data';
 import 'package:flutter/foundation.dart' show debugPrint, kIsWeb;
 import 'package:http/http.dart' as http;
 import 'firmware_storage.dart';
+import '../models/chip_platform.dart';
+import '../constants.dart';
 
 // Conditionally import dart:html only on web
 // We use url_launcher instead for cross-platform URL opening
@@ -31,37 +33,12 @@ enum LogLevel { info, success, warning, error }
 /// Downloads the latest OpenBK7231T_App firmware from GitHub Releases.
 /// Mirrors the logic in FormDownloader.cs from the C# flasher.
 class FirmwareDownloader {
-  static const String _releasesUrl =
-      'https://github.com/openshwprojects/OpenBK7231T_App/releases';
-
-  /// Maps GUI platform names to firmware-file prefixes, mirroring
-  /// the C# `FormMain.getFirmwarePrefix(BKType)` logic.
-  static String getFirmwarePrefix(String platform) {
-    switch (platform) {
-      // QIO variants
-      case 'BK7231N':
-      case 'BK7231M':
-      case 'BK7236':
-      case 'BK7238':
-      case 'BK7252N':
-      case 'BK7258':
-        return 'Open${platform}_QIO_';
-      // UA variants
-      case 'BK7231':
-      case 'BK7231T':
-      case 'BK7231U':
-      case 'BK7252':
-        return 'Open${platform}_UA_';
-      // Everything else (ESP, etc.)
-      default:
-        return 'Open${platform}_';
-    }
-  }
+  static const String _releasesUrl = kFirmwareReleasesUrl;
 
   /// Download the latest firmware for [platform], saving via [storage].
   /// Progress and log messages are reported through callbacks.
   static Future<DownloadResult?> downloadLatest({
-    required String platform,
+    required ChipPlatform platform,
     required FirmwareStorage storage,
     LogCallback? onLog,
     ProgressCallback? onProgress,
@@ -116,7 +93,7 @@ class FirmwareDownloader {
         }
 
         // --- Step 3: search for the firmware download link ---
-        final pfx = getFirmwarePrefix(platform);
+        final pfx = platform.firmwarePrefix;
         log('Searching for prefix: $pfx');
 
         String firmwareUrl = '';
@@ -196,7 +173,7 @@ class FirmwareDownloader {
         log('Downloaded ${bytes.length} bytes');
 
         // --- Step 5: save via FirmwareStorage ---
-        final path = await storage.saveFile('firmwares', fileName, bytes);
+        final path = await storage.saveFile(kFirmwareStorageSubdir, fileName, bytes);
         if (path != null) {
           log('Saved to $path', level: LogLevel.success);
         } else {
@@ -216,7 +193,7 @@ class FirmwareDownloader {
       );
       onLog?.call('Please manually download firmware from: $_releasesUrl',
           level: LogLevel.error);
-      final pfx = getFirmwarePrefix(platform);
+      final pfx = platform.firmwarePrefix;
       onLog?.call('Choose the file with prefix $pfx', level: LogLevel.error);
       return null;
     }

@@ -5,12 +5,14 @@ import 'dart:typed_data';
 import 'package:desktop_drop/desktop_drop.dart';
 import '../services/firmware_downloader.dart';
 import '../services/firmware_storage.dart';
+import '../models/chip_platform.dart';
+import '../constants.dart';
 
 /// Modal dialog that downloads the latest firmware for a given platform,
 /// showing a scrolling log area and a progress bar.
 /// On web, shows a drag-and-drop zone after opening the download in a new tab.
 class DownloadDialog extends StatefulWidget {
-  final String platform;
+  final ChipPlatform platform;
   final FirmwareStorage storage;
 
   const DownloadDialog({
@@ -22,7 +24,7 @@ class DownloadDialog extends StatefulWidget {
   /// Show the dialog as a modal and return the DownloadResult (or null).
   static Future<DownloadResult?> show(
     BuildContext context, {
-    required String platform,
+    required ChipPlatform platform,
     required FirmwareStorage storage,
   }) {
     return showDialog<DownloadResult>(
@@ -102,7 +104,7 @@ class _DownloadDialogState extends State<DownloadDialog> {
     });
     _scrollToBottom();
 
-    final path = await widget.storage.saveFile('firmwares', fileName, bytes);
+    final path = await widget.storage.saveFile(kFirmwareStorageSubdir, fileName, bytes);
     final result = DownloadResult(
       fileName: fileName,
       filePath: path,

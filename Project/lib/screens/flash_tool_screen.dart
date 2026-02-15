@@ -5,8 +5,9 @@ import 'dart:io' show Platform;
 import 'package:provider/provider.dart';
 import '../providers/serial_provider.dart';
 import '../services/firmware_storage.dart';
-import '../services/firmware_downloader.dart';
 import '../widgets/download_dialog.dart';
+import '../models/chip_platform.dart';
+import '../constants.dart';
 
 class FlashToolScreen extends StatefulWidget {
   const FlashToolScreen({super.key});
@@ -19,13 +20,13 @@ class _FlashToolScreenState extends State<FlashToolScreen> {
   final ScrollController _logScrollController = ScrollController();
   final TextEditingController _customBaudController = TextEditingController();
 
-  final List<int> _commonBaudRates = [9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600];
+  final List<int> _commonBaudRates = kCommonBaudRates;
   bool _useCustomBaud = false;
 
   // --- GUI-layer state (not in provider) ---
   final List<String> _logLines = [];
   double _progress = 0.0;
-  String _selectedPlatform = 'BK7231T';
+  ChipPlatform _selectedPlatform = ChipPlatform.bk7231t;
   String _selectedFirmware = '(none)';
   String? _customFirmwarePath;
   bool _isDragOver = false;
@@ -35,25 +36,6 @@ class _FlashToolScreenState extends State<FlashToolScreen> {
 
   // Dynamic firmware list loaded from disk
   List<String> _availableFirmwares = ['(none)'];
-
-  static const List<String> _platforms = [
-    'BK7231T',
-    'BK7231N',
-    'BK7231M',
-    'BK7238',
-    'BK7236',
-    'BK7252',
-    'BK7252N',
-    'BK7258',
-    'BL602',
-    'BL702',
-    'W600',
-    'W800',
-    'LN882H',
-    'XR809',
-    'RTL8710B',
-    'ESP32',
-  ];
 
   @override
   void initState() {
@@ -70,8 +52,8 @@ class _FlashToolScreenState extends State<FlashToolScreen> {
 
   /// Reload the firmware dropdown from disk (or in-memory on web).
   Future<void> _refreshFirmwareList() async {
-    final prefix = FirmwareDownloader.getFirmwarePrefix(_selectedPlatform);
-    final files = await _storage.listFiles('firmwares', prefix: prefix);
+    final prefix = _selectedPlatform.firmwarePrefix;
+    final files = await _storage.listFiles(kFirmwareStorageSubdir, prefix: prefix);
     if (mounted) {
       setState(() {
         _availableFirmwares = ['(none)', ...files];
@@ -407,16 +389,16 @@ class _FlashToolScreenState extends State<FlashToolScreen> {
           const SizedBox(width: 10),
           const Text('Platform:', style: TextStyle(fontWeight: FontWeight.w600)),
           const SizedBox(width: 12),
-          DropdownButton<String>(
+          DropdownButton<ChipPlatform>(
             value: _selectedPlatform,
             underline: const SizedBox(),
-            items: _platforms.map((p) {
-              return DropdownMenuItem(value: p, child: Text(p));
+            items: ChipPlatform.values.map((p) {
+              return DropdownMenuItem(value: p, child: Text(p.displayName));
             }).toList(),
             onChanged: (value) {
               if (value != null) {
                 setState(() => _selectedPlatform = value);
-                _addLog('Platform changed to $value');
+                _addLog('Platform changed to ${value.displayName}');
                 _refreshFirmwareList();
               }
             },
