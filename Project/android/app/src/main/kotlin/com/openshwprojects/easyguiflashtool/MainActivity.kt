@@ -1,4 +1,4 @@
-package com.example.flutter_uart_demo
+package com.openshwprojects.easyguiflashtool
 
 import io.flutter.embedding.android.FlutterActivity
 
