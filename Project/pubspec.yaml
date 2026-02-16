@@ -21,6 +21,9 @@ dependencies:
   # Serial communication - Desktop (Windows, Linux, macOS)
   flutter_libserialport: ^0.6.0
   
+  # Serial communication - Windows native (Win32 API, no heap corruption)
+  serial_port_win32: ^2.3.0
+  
   # Web support
   web: ^1.0.0
   

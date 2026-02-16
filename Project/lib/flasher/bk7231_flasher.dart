@@ -193,6 +193,7 @@ class BK7231Flasher extends BaseFlasher {
       }
       // Yield to allow stream events to arrive
       await Future.delayed(Duration.zero);
+      //await Future.delayed(const Duration(milliseconds: 1));
     }
 
     if (_rxBuffer.length >= rxLen) {

@@ -254,11 +254,11 @@ class _DownloadDialogState extends State<DownloadDialog> {
                 },
         ),
         TextButton(
-          onPressed: _done ? () => Navigator.of(context).pop(_result) : null,
+          onPressed: () => Navigator.of(context).pop(_done ? _result : null),
           child: Text(
-            _done ? 'Close' : 'Downloading...',
-            style: TextStyle(
-              color: _done ? Colors.deepOrange : Colors.grey,
+            _done ? 'Close' : 'Cancel',
+            style: const TextStyle(
+              color: Colors.deepOrange,
               fontWeight: FontWeight.w600,
             ),
           ),

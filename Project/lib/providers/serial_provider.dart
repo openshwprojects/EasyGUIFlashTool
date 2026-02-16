@@ -58,7 +58,7 @@ class SerialProvider extends ChangeNotifier {
         // If the transport supports setting the baud, set it now
         if (_transport is dynamic) {
           try {
-            (_transport as dynamic).setBaudRate(savedBaud);
+            (_transport as dynamic).setInitialBaudRate(savedBaud);
           } catch (_) {}
         }
       }

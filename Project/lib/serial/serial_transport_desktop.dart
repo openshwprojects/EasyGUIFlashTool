@@ -6,6 +6,7 @@ import 'serial_transport.dart';
 class SerialTransportDesktop implements SerialTransport {
   SerialPort? _port;
   SerialPortReader? _reader;
+  SerialPortConfig? _cachedConfig;
   final StreamController<Uint8List> _streamController =
       StreamController<Uint8List>.broadcast();
   
@@ -26,7 +27,7 @@ class SerialTransportDesktop implements SerialTransport {
   }
 
   /// Set baud rate (call before connect)
-  void setBaudRate(int baudRate) {
+  void setInitialBaudRate(int baudRate) {
     _baudRate = baudRate;
   }
 
@@ -55,17 +56,7 @@ class SerialTransportDesktop implements SerialTransport {
 
       _port = SerialPort(_selectedPortName!);
 
-      // Configure port settings with custom baud rate
-      final config = SerialPortConfig()
-        ..baudRate = _baudRate
-        ..bits = 8
-        ..stopBits = 1
-        ..parity = SerialPortParity.none
-        ..setFlowControl(SerialPortFlowControl.none);
-
-      _port!.config = config;
-
-      // Open the port
+      // Open the port FIRST — libserialport ignores config set before open
       if (!_port!.openReadWrite()) {
         final error = SerialPort.lastError;
         print('Failed to open port: ${error?.message}');
@@ -74,7 +65,19 @@ class SerialTransportDesktop implements SerialTransport {
         return false;
       }
 
+      // Now configure port settings
+      final config = SerialPortConfig()
+        ..baudRate = _baudRate
+        ..bits = 8
+        ..stopBits = 1
+        ..parity = SerialPortParity.none
+        ..setFlowControl(SerialPortFlowControl.none);
+      _port!.config = config;
+
       print('Connected to serial port: $_selectedPortName at $_baudRate baud');
+
+      // Cache config for lightweight DTR/RTS changes
+      _cachedConfig = _port!.config;
 
       // Start reading data
       _startReading();
@@ -108,6 +111,7 @@ class SerialTransportDesktop implements SerialTransport {
   Future<void> disconnect() async {
     _reader?.close();
     _reader = null;
+    _cachedConfig = null;
     
     _port?.close();
     _port?.dispose();
@@ -133,12 +137,12 @@ class SerialTransportDesktop implements SerialTransport {
 
   @override
   Future<void> setDTR(bool value) async {
-    if (_port == null || !_port!.isOpen) return;
+    if (_port == null || !_port!.isOpen || _cachedConfig == null) return;
     try {
-      final config = _port!.config;
-      config.dtr = value ? SerialPortDtr.on : SerialPortDtr.off;
-      _port!.config = config;
-      config.dispose();
+      _cachedConfig!.dtr = value ? SerialPortDtr.on : SerialPortDtr.off;
+      _port!.config = _cachedConfig!;
+      // Yield to the event loop so the Windows message pump can process
+      await Future.delayed(Duration.zero);
     } catch (e) {
       print('setDTR error: $e');
     }
@@ -146,29 +150,54 @@ class SerialTransportDesktop implements SerialTransport {
 
   @override
   Future<void> setRTS(bool value) async {
+    if (_port == null || !_port!.isOpen || _cachedConfig == null) return;
     try {
-      final config = _port?.config;
-      if (config != null) {
-        config.rts = value ? SerialPortRts.on : SerialPortRts.off;
-        _port!.config = config;
-        config.dispose();
-      }
+      _cachedConfig!.rts = value ? SerialPortRts.on : SerialPortRts.off;
+      _port!.config = _cachedConfig!;
+      // Yield to the event loop so the Windows message pump can process
+      await Future.delayed(Duration.zero);
     } catch (e) {
-      // Some platforms may not support RTS
+      print('setRTS error: $e');
     }
   }
 
   @override
   Future<void> setBaudRate(int baudRate) async {
-    if (_port == null) return;
+    if (_port == null || !_port!.isOpen) {
+      _baudRate = baudRate;
+      return;
+    }
     _baudRate = baudRate;
     try {
-      final config = _port!.config;
-      config.baudRate = baudRate;
+      // libserialport config get/set/dispose causes heap corruption on Windows.
+      // Close and reopen the port at the new baud rate instead.
+      _reader?.close();
+      _reader = null;
+      _port!.close();
+      _port!.dispose();
+
+      _port = SerialPort(_selectedPortName!);
+
+      // Open FIRST, then configure
+      if (!_port!.openReadWrite()) {
+        print('setBaudRate: Failed to reopen port');
+        _port?.dispose();
+        _port = null;
+        return;
+      }
+      final config = SerialPortConfig()
+        ..baudRate = baudRate
+        ..bits = 8
+        ..stopBits = 1
+        ..parity = SerialPortParity.none
+        ..setFlowControl(SerialPortFlowControl.none);
       _port!.config = config;
-      config.dispose();
+      _cachedConfig = _port!.config;
+
+      _startReading();
+      print('Port reopened at $baudRate baud');
     } catch (e) {
-      // Fallback: will be used on next connect
+      print('setBaudRate error: $e');
     }
   }
 
@@ -176,6 +205,7 @@ class SerialTransportDesktop implements SerialTransport {
   void dispose() {
     _reader?.close();
     _reader = null;
+    _cachedConfig = null;
     _port?.close();
     _port?.dispose();
     _port = null;

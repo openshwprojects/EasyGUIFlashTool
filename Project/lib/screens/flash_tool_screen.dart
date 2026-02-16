@@ -13,6 +13,7 @@ import '../constants.dart';
 import '../flasher/bk7231_flasher.dart';
 import '../flasher/base_flasher.dart';
 import 'package:desktop_drop/desktop_drop.dart';
+import '../services/file_opener.dart';
 
 class FlashToolScreen extends StatefulWidget {
   const FlashToolScreen({super.key});
@@ -559,13 +560,30 @@ class _FlashToolScreenState extends State<FlashToolScreen> {
                   ],
                   const SizedBox(width: 8),
                   ElevatedButton.icon(
-                    onPressed: () {
-                      // Placeholder — will integrate file_picker later
-                      setState(() {
-                        _customFirmwarePath = 'custom_firmware.bin';
-                        _selectedFirmware = '(none)';
-                      });
-                      _addLog('Open firmware file: custom_firmware.bin (placeholder)');
+                    onPressed: () async {
+                      try {
+                        final result = await pickFirmwareFile();
+                        if (result == null) return;
+                        final fileName = result.name;
+                        final bytes = result.bytes;
+                        if (bytes.isEmpty) {
+                          _addLog('ERROR: File "$fileName" is empty.');
+                          return;
+                        }
+                        _addLog('Opened file: $fileName (${bytes.length} bytes)');
+                        await _storage.saveFile(kFirmwareStorageSubdir, fileName, bytes);
+                        _addLog('Saved firmware: $fileName');
+                        await _refreshFirmwareList();
+                        if (mounted && _availableFirmwares.contains(fileName)) {
+                          setState(() {
+                            _selectedFirmware = fileName;
+                            _customFirmwarePath = null;
+                          });
+                          _saveUiSetting('ui_firmware', fileName);
+                        }
+                      } catch (e) {
+                        _addLog('ERROR opening file: $e');
+                      }
                     },
                     icon: const Icon(Icons.folder_open, size: 18),
                     label: const Text('Open'),
@@ -792,6 +810,79 @@ class _FlashToolScreenState extends State<FlashToolScreen> {
       await _cleanupFlasher();
     }
   }
+
+  Future<void> _runFlasherVerify() async {
+    if (_flasherRunning) {
+      _addLog('A flasher operation is already running.');
+      return;
+    }
+    
+    if (!await _ensurePortOpen()) return;
+
+    // Load firmware bytes (same as _runFlasherWrite)
+    if (_selectedFirmware == '(none)' && _customFirmwarePath == null) {
+      _addLog('ERROR: No firmware selected. Please select or download a firmware first.');
+      return;
+    }
+    final fwName = _customFirmwarePath ?? _selectedFirmware;
+    _addLog('Loading firmware: $fwName ...');
+    final firmwareData = await _storage.readFile(kFirmwareStorageSubdir, fwName);
+    if (firmwareData == null || firmwareData.isEmpty) {
+      _addLog('ERROR: Could not read firmware file "$fwName".');
+      return;
+    }
+    _addLog('Firmware loaded: ${firmwareData.length} bytes');
+
+    // Round up to sector boundary (4K = 0x1000)
+    final sectors = (firmwareData.length + 0xFFF) ~/ 0x1000;
+    _addLog('Will read $sectors sectors (${sectors * 0x1000} bytes) from device for verification...');
+
+    _createFlasher();
+    if (_currentFlasher == null) return;
+
+    setState(() {
+      _flasherRunning = true;
+      _progress = 0;
+      _hasError = false;
+    });
+
+    try {
+      await _currentFlasher!.doRead(startSector: 0, sectors: sectors);
+      final readData = _currentFlasher!.getReadResult();
+      if (readData == null) {
+        _addLog('Read failed or was cancelled — verify aborted.');
+        return;
+      }
+
+      // Compare only up to firmware file length
+      bool match = true;
+      int mismatchOffset = -1;
+      for (int i = 0; i < firmwareData.length; i++) {
+        if (i >= readData.length || readData[i] != firmwareData[i]) {
+          match = false;
+          mismatchOffset = i;
+          break;
+        }
+      }
+
+      if (match) {
+        _addLog('VERIFY OK — flash contents match firmware file (${firmwareData.length} bytes).');
+      } else {
+        final hex = '0x${mismatchOffset.toRadixString(16).toUpperCase()}';
+        final expected = mismatchOffset < firmwareData.length
+            ? '0x${firmwareData[mismatchOffset].toRadixString(16).toUpperCase().padLeft(2, '0')}'
+            : 'N/A';
+        final actual = mismatchOffset < readData.length
+            ? '0x${readData[mismatchOffset].toRadixString(16).toUpperCase().padLeft(2, '0')}'
+            : 'N/A';
+        _addLog('VERIFY FAILED — first mismatch at offset $hex (expected $expected, got $actual).');
+      }
+    } catch (e) {
+      _addLog('Exception during verify: $e');
+    } finally {
+      await _cleanupFlasher();
+    }
+  }
   
   Future<void> _cleanupFlasher() async {
     if (_currentFlasher != null) {
@@ -867,7 +958,8 @@ class _FlashToolScreenState extends State<FlashToolScreen> {
               : () {
                   _addLog('=== Starting Verify ===');
                   _addLog('Platform: $_selectedPlatform');
-                  _addLog('Verify not yet implemented.');
+                  _addLog('Firmware: ${_customFirmwarePath ?? _selectedFirmware}');
+                  _runFlasherVerify();
                 },
         ),
         _buildActionButton(
