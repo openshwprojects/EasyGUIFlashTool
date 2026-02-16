@@ -8,7 +8,7 @@ SerialTransport createSerialTransport() {
   if (Platform.isAndroid) {
     return android.getSerialTransport();
   } else if (Platform.isWindows) {
-    return desktop.getSerialTransport();
+    return win32.getSerialTransport();
   } else if (Platform.isLinux || Platform.isMacOS) {
     return desktop.getSerialTransport();
   }

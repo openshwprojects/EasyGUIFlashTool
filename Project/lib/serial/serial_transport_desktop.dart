@@ -141,8 +141,6 @@ class SerialTransportDesktop implements SerialTransport {
     try {
       _cachedConfig!.dtr = value ? SerialPortDtr.on : SerialPortDtr.off;
       _port!.config = _cachedConfig!;
-      // Yield to the event loop so the Windows message pump can process
-      await Future.delayed(Duration.zero);
     } catch (e) {
       print('setDTR error: $e');
     }
@@ -154,8 +152,6 @@ class SerialTransportDesktop implements SerialTransport {
     try {
       _cachedConfig!.rts = value ? SerialPortRts.on : SerialPortRts.off;
       _port!.config = _cachedConfig!;
-      // Yield to the event loop so the Windows message pump can process
-      await Future.delayed(Duration.zero);
     } catch (e) {
       print('setRTS error: $e');
     }
@@ -167,35 +163,25 @@ class SerialTransportDesktop implements SerialTransport {
       _baudRate = baudRate;
       return;
     }
+    if (baudRate == _baudRate) return;
     _baudRate = baudRate;
     try {
-      // libserialport config get/set/dispose causes heap corruption on Windows.
-      // Close and reopen the port at the new baud rate instead.
-      _reader?.close();
-      _reader = null;
-      _port!.close();
-      _port!.dispose();
-
-      _port = SerialPort(_selectedPortName!);
-
-      // Open FIRST, then configure
-      if (!_port!.openReadWrite()) {
-        print('setBaudRate: Failed to reopen port');
-        _port?.dispose();
-        _port = null;
-        return;
+      // In-place baud rate change — no close/reopen needed on Linux/macOS.
+      // (Windows now uses SerialTransportWin32 instead.)
+      if (_cachedConfig != null) {
+        _cachedConfig!.baudRate = baudRate;
+        _port!.config = _cachedConfig!;
+      } else {
+        final config = SerialPortConfig()
+          ..baudRate = baudRate
+          ..bits = 8
+          ..stopBits = 1
+          ..parity = SerialPortParity.none
+          ..setFlowControl(SerialPortFlowControl.none);
+        _port!.config = config;
+        _cachedConfig = _port!.config;
       }
-      final config = SerialPortConfig()
-        ..baudRate = baudRate
-        ..bits = 8
-        ..stopBits = 1
-        ..parity = SerialPortParity.none
-        ..setFlowControl(SerialPortFlowControl.none);
-      _port!.config = config;
-      _cachedConfig = _port!.config;
-
-      _startReading();
-      print('Port reopened at $baudRate baud');
+      print('Baud rate changed to $baudRate');
     } catch (e) {
       print('setBaudRate error: $e');
     }
