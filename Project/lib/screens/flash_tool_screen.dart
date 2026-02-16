@@ -149,6 +149,51 @@ class _FlashToolScreenState extends State<FlashToolScreen> {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final isDesktop = _isDesktop();
+
+    final content = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: isDesktop ? MainAxisSize.max : MainAxisSize.min,
+      children: [
+        // Top controls: flow inline, wrap when narrow
+        Wrap(
+          spacing: 10,
+          runSpacing: 8,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            _buildConnectionSection(),
+            _buildPlatformSection(),
+            _buildFirmwareSection(),
+          ],
+        ),
+        const SizedBox(height: 16),
+
+        // Divider
+        Divider(color: colorScheme.outlineVariant),
+        const SizedBox(height: 12),
+
+        // Action buttons
+        _buildActionButtons(),
+        const SizedBox(height: 16),
+
+        // Progress bar
+        _buildProgressBar(),
+        const SizedBox(height: 16),
+
+        // Log field — on desktop use Expanded; on mobile give a min height
+        // so the log box is always usable even if the page scrolls.
+        if (isDesktop)
+          Expanded(child: _buildLogField())
+        else
+          ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 300),
+            child: SizedBox(
+              height: MediaQuery.of(context).size.height * 0.45,
+              child: _buildLogField(),
+            ),
+          ),
+      ],
+    );
 
     return Scaffold(
       appBar: AppBar(
@@ -163,38 +208,9 @@ class _FlashToolScreenState extends State<FlashToolScreen> {
       ),
       body: Padding(
         padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // Top controls: flow inline, wrap when narrow
-            Wrap(
-              spacing: 10,
-              runSpacing: 8,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                _buildConnectionSection(),
-                _buildPlatformSection(),
-                _buildFirmwareSection(),
-              ],
-            ),
-            const SizedBox(height: 16),
-
-            // Divider
-            Divider(color: colorScheme.outlineVariant),
-            const SizedBox(height: 12),
-
-            // Action buttons
-            _buildActionButtons(),
-            const SizedBox(height: 16),
-
-            // Progress bar
-            _buildProgressBar(),
-            const SizedBox(height: 16),
-
-            // Log field (expanded)
-            Expanded(child: _buildLogField()),
-          ],
-        ),
+        child: isDesktop
+            ? content
+            : SingleChildScrollView(child: content),
       ),
     );
   }
@@ -512,24 +528,30 @@ class _FlashToolScreenState extends State<FlashToolScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            Row(
-              mainAxisSize: MainAxisSize.min,
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: [
-                Icon(
-                  _isDragOver ? Icons.file_download : Icons.sd_storage,
-                  size: 20,
-                  color: _isDragOver ? Colors.deepOrange : null,
-                ),
-                const SizedBox(width: 10),
-                Text(
-                  _isDragOver ? 'Drop file here' : 'Firmware:',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                    color: _isDragOver ? Colors.deepOrange : null,
-                  ),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      _isDragOver ? Icons.file_download : Icons.sd_storage,
+                      size: 20,
+                      color: _isDragOver ? Colors.deepOrange : null,
+                    ),
+                    const SizedBox(width: 10),
+                    Text(
+                      _isDragOver ? 'Drop file here' : 'Firmware:',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        color: _isDragOver ? Colors.deepOrange : null,
+                      ),
+                    ),
+                  ],
                 ),
                 if (!_isDragOver) ...[
-                  const SizedBox(width: 12),
                   DropdownButton<String>(
                     value: _selectedFirmware,
                     underline: const SizedBox(),
@@ -547,8 +569,7 @@ class _FlashToolScreenState extends State<FlashToolScreen> {
                       }
                     },
                   ),
-                  if (_customFirmwarePath != null) ...[
-                    const SizedBox(width: 8),
+                  if (_customFirmwarePath != null)
                     Tooltip(
                       message: _customFirmwarePath!,
                       child: Chip(
@@ -564,8 +585,6 @@ class _FlashToolScreenState extends State<FlashToolScreen> {
                         },
                       ),
                     ),
-                  ],
-                  const SizedBox(width: 8),
                   ElevatedButton.icon(
                     onPressed: () async {
                       try {
@@ -598,7 +617,6 @@ class _FlashToolScreenState extends State<FlashToolScreen> {
                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                     ),
                   ),
-                  const SizedBox(width: 6),
                   ElevatedButton.icon(
                     onPressed: () async {
                       final result = await DownloadDialog.show(
