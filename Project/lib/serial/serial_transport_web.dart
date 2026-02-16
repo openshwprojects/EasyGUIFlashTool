@@ -55,6 +55,7 @@ class SerialTransportWeb implements SerialTransport {
       debugPrint("Opening port...");
       final options = JSObject();
       options.setProperty('baudRate'.toJS, 115200.toJS);
+      options.setProperty('bufferSize'.toJS, 32768.toJS);
       
       final openPromise = _port!.callMethod('open'.toJS, options);
       await (openPromise as JSPromise).toDart;
@@ -194,6 +195,7 @@ class SerialTransportWeb implements SerialTransport {
 
       final options = JSObject();
       options.setProperty('baudRate'.toJS, baudRate.toJS);
+      options.setProperty('bufferSize'.toJS, 32768.toJS);
       await (_port!.callMethod('open'.toJS, options) as JSPromise).toDart;
       _startReading();
     } catch (e) {
