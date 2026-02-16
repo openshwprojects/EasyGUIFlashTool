@@ -204,29 +204,36 @@ class _FlashToolScreenState extends State<FlashToolScreen> {
   Widget _buildConnectionSection() {
     return Consumer<SerialProvider>(
       builder: (context, provider, _) {
-        return Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surfaceContainerHighest,
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Wrap(
-            spacing: 12,
-            runSpacing: 8,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              // Port dropdown
-              if (_isDesktop()) _buildPortSelector(provider),
+        return IgnorePointer(
+          ignoring: _flasherRunning,
+          child: AnimatedOpacity(
+            opacity: _flasherRunning ? 0.4 : 1.0,
+            duration: const Duration(milliseconds: 250),
+            child: Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Wrap(
+                spacing: 12,
+                runSpacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  // Port dropdown
+                  if (_isDesktop()) _buildPortSelector(provider),
 
-              // Baud rate
-              _buildBaudRateSelector(provider),
+                  // Baud rate
+                  _buildBaudRateSelector(provider),
 
-              // Open / Close button
-              _buildConnectionButton(provider),
+                  // Open / Close button
+                  _buildConnectionButton(provider),
 
-              // Connection state indicator
-              _buildStatusChip(provider),
-            ],
+                  // Connection state indicator
+                  _buildStatusChip(provider),
+                ],
+              ),
+            ),
           ),
         );
       },
