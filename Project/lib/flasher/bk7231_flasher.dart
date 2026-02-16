@@ -108,6 +108,8 @@ class BK7231Flasher extends BaseFlasher {
           return;
         }
         setProgress(sec + 1, sectors);
+        // Yield to let Flutter process progress update and user input
+        await Future.delayed(const Duration(milliseconds: 1));
       }
       addLogLine('Write finished, now verifying CRC...');
       if (!await _checkCRC(startSector, sectors, data)) return;
@@ -191,9 +193,9 @@ class BK7231Flasher extends BaseFlasher {
         _rxBuffer.removeRange(0, rxLen);
         return ret;
       }
-      // Yield to allow stream events to arrive
-      await Future.delayed(Duration.zero);
-      //await Future.delayed(const Duration(milliseconds: 1));
+      // Yield a full event-loop turn so Flutter can process UI input
+      // (clicks, window drag). Duration.zero only yields a microtask.
+      await Future.delayed(const Duration(milliseconds: 1));
     }
 
     if (_rxBuffer.length >= rxLen) {
@@ -490,8 +492,9 @@ class BK7231Flasher extends BaseFlasher {
   Future<bool> _getBus() async {
     addLog('Getting bus... (now, please do reboot by CEN or by power off/on)\n');
 
-    // Chip bootloader always starts at 115200
-    // The transport should already be at 115200 from openPort
+    // Chip bootloader always starts at 115200 — force the transport
+    // to 115200 regardless of what the UI configured.
+    await transport.setBaudRate(115200);
     for (int tr = 0; tr < 100 && !isCancelled; tr++) {
       await transport.setDTR(true);
       await transport.setRTS(true);
@@ -508,6 +511,10 @@ class BK7231Flasher extends BaseFlasher {
         if (await _linkCheck()) {
           addSuccess('Getting bus success!\n');
           return true;
+        }
+        // Yield every 10 iterations to keep UI responsive
+        if (l % 10 == 9) {
+          await Future.delayed(const Duration(milliseconds: 1));
         }
       }
       addWarning('Getting bus failed, will try again - $tr/100!\n');
@@ -838,6 +845,7 @@ class BK7231Flasher extends BaseFlasher {
         if (await _eraseSector(addr, 0x20)) {
           current++;
           setProgress(current + 1, sectors);
+          await Future.delayed(const Duration(milliseconds: 1));
           return true;
         }
         if (tries > 5) {
@@ -864,6 +872,7 @@ class BK7231Flasher extends BaseFlasher {
         if (await _eraseSector(addr, 0xD8)) {
           current += sectorsPerBlock;
           setProgress(current + 1, sectors);
+          await Future.delayed(const Duration(milliseconds: 1));
           break;
         }
         if (tries > 5) {
@@ -913,6 +922,8 @@ class BK7231Flasher extends BaseFlasher {
       // Skip header (15 bytes)
       result.add(res.sublist(15));
       setProgress(i + 1, sectors);
+    // Yield to let Flutter process progress update and user input
+    await Future.delayed(const Duration(milliseconds: 1));
     }
 
     addLog('\nBasic read operation finished, now verifying...\n');

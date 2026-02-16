@@ -90,15 +90,24 @@ class SerialTransportWin32 implements SerialTransport {
   Future<void> _readLoop() async {
     while (_isReading && _port != null && _port!.isOpened) {
       try {
-        final data = await _port!.readBytes(4096, timeout: const Duration(milliseconds: 5));
+        // Use a longer polling interval (2ms vs default 500μs) to avoid
+        // flooding the Dart event loop with timer callbacks. The default
+        // 500μs creates ~10 timer events per readBytes call which starves
+        // the Windows message pump of input processing time.
+        final data = await _port!.readBytes(
+          4096,
+          timeout: const Duration(milliseconds: 10),
+          dataPollingInterval: const Duration(milliseconds: 2),
+        );
         if (data.isNotEmpty) {
           _streamController.add(Uint8List.fromList(data));
         }
       } catch (_) {
         // Port may have been closed
       }
-      // Yield to the event loop so Flutter can process UI/messages
-      await Future.delayed(Duration.zero);
+      // Yield enough time for Flutter to process Windows messages
+      // (WM_LBUTTONDOWN, WM_MOUSEMOVE, etc.) between read cycles.
+      await Future.delayed(const Duration(milliseconds: 5));
     }
   }
 
