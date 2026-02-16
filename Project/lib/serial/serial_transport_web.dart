@@ -185,10 +185,11 @@ class SerialTransportWeb implements SerialTransport {
       _isReading = false;
       if (_reader != null) {
         try { await (_reader!.callMethod('cancel'.toJS) as JSPromise).toDart; } catch (_) {}
+        try { _reader!.callMethod('releaseLock'.toJS); } catch (_) {}
         _reader = null;
       }
       if (_writer != null) {
-        try { await (_writer!.callMethod('close'.toJS) as JSPromise).toDart; } catch (_) {}
+        try { await (_writer!.callMethod('releaseLock'.toJS) as JSPromise).toDart; } catch (_) {}
         _writer = null;
       }
       await (_port!.callMethod('close'.toJS) as JSPromise).toDart;
@@ -198,6 +199,9 @@ class SerialTransportWeb implements SerialTransport {
       options.setProperty('bufferSize'.toJS, 32768.toJS);
       await (_port!.callMethod('open'.toJS, options) as JSPromise).toDart;
       _startReading();
+      // Give the read loop time to acquire the reader before the caller
+      // sends commands and expects responses.
+      await Future.delayed(const Duration(milliseconds: 50));
     } catch (e) {
       debugPrint('setBaudRate error: $e');
     }
