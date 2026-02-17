@@ -500,14 +500,7 @@ class _FlashToolScreenState extends State<FlashToolScreen> {
           _addLog('Dropped file size: ${bytes.length} bytes');
           await _storage.saveFile(kFirmwareStorageSubdir, fileName, bytes);
           _addLog('Saved dropped firmware: $fileName');
-          await _refreshFirmwareList();
-          if (mounted && _availableFirmwares.contains(fileName)) {
-            setState(() {
-              _selectedFirmware = fileName;
-              _customFirmwarePath = null;
-            });
-            _saveUiSetting('ui_firmware', fileName);
-          }
+          await _selectFirmwareAfterSave(fileName);
         } catch (e) {
           _addLog('ERROR reading dropped file: $e');
         }
@@ -599,14 +592,7 @@ class _FlashToolScreenState extends State<FlashToolScreen> {
                         _addLog('Opened file: $fileName (${bytes.length} bytes)');
                         await _storage.saveFile(kFirmwareStorageSubdir, fileName, bytes);
                         _addLog('Saved firmware: $fileName');
-                        await _refreshFirmwareList();
-                        if (mounted && _availableFirmwares.contains(fileName)) {
-                          setState(() {
-                            _selectedFirmware = fileName;
-                            _customFirmwarePath = null;
-                          });
-                          _saveUiSetting('ui_firmware', fileName);
-                        }
+                        await _selectFirmwareAfterSave(fileName);
                       } catch (e) {
                         _addLog('ERROR opening file: $e');
                       }
@@ -626,15 +612,7 @@ class _FlashToolScreenState extends State<FlashToolScreen> {
                       );
                       if (result != null) {
                         _addLog('Downloaded: ${result.fileName}');
-                        await _refreshFirmwareList();
-                        // Auto-select the newly downloaded firmware
-                        if (mounted && _availableFirmwares.contains(result.fileName)) {
-                          setState(() {
-                            _selectedFirmware = result.fileName;
-                            _customFirmwarePath = null;
-                          });
-                          _saveUiSetting('ui_firmware', result.fileName);
-                        }
+                        await _selectFirmwareAfterSave(result.fileName);
                       }
                     },
                     icon: const Icon(Icons.cloud_download, size: 18),
@@ -666,11 +644,41 @@ class _FlashToolScreenState extends State<FlashToolScreen> {
 
   // ─── Action Buttons ───
 
+  // ── Firmware helpers ────────────────────────────────────────────────
+
+  /// Refresh list and auto-select the given firmware after a save/download.
+  Future<void> _selectFirmwareAfterSave(String fileName) async {
+    await _refreshFirmwareList();
+    if (mounted && _availableFirmwares.contains(fileName)) {
+      setState(() {
+        _selectedFirmware = fileName;
+        _customFirmwarePath = null;
+      });
+      _saveUiSetting('ui_firmware', fileName);
+    }
+  }
+
+  /// Load the currently-selected firmware from storage.
+  /// Returns null (and logs an error) if nothing is selected or the file is empty.
+  Future<Uint8List?> _loadSelectedFirmware() async {
+    if (_selectedFirmware == '(none)' && _customFirmwarePath == null) {
+      _addLog('ERROR: No firmware selected. Please select or download a firmware first.');
+      return null;
+    }
+    final fwName = _customFirmwarePath ?? _selectedFirmware;
+    _addLog('Loading firmware: $fwName ...');
+    final data = await _storage.readFile(kFirmwareStorageSubdir, fwName);
+    if (data == null || data.isEmpty) {
+      _addLog('ERROR: Could not read firmware file "$fwName".');
+      return null;
+    }
+    _addLog('Firmware loaded: ${data.length} bytes');
+    return data;
+  }
+
   // ── Flasher integration helpers ──────────────────────────────────────
 
   BK7231Flasher? _currentFlasher;
-
-  // ── Flasher integration helpers ──────────────────────────────────────
 
   void _createFlasher() {
     final provider = context.read<SerialProvider>();
@@ -731,7 +739,8 @@ class _FlashToolScreenState extends State<FlashToolScreen> {
     return ok;
   }
 
-  Future<void> _runFlasherRead({bool fullRead = false}) async {
+  /// Common wrapper: guard checks, flasher creation, state management, cleanup.
+  Future<void> _runFlasherOperation(String name, Future<void> Function() body) async {
     if (_flasherRunning) {
       _addLog('A flasher operation is already running.');
       return;
@@ -749,6 +758,16 @@ class _FlashToolScreenState extends State<FlashToolScreen> {
     });
 
     try {
+      await body();
+    } catch (e) {
+      _addLog('Exception during $name: $e');
+    } finally {
+      await _cleanupFlasher();
+    }
+  }
+
+  Future<void> _runFlasherRead({bool fullRead = false}) async {
+    await _runFlasherOperation('read', () async {
       await _currentFlasher!.doRead(startSector: 0, sectors: 0x200000 ~/ 0x1000, fullRead: fullRead);
       final result = _currentFlasher!.getReadResult();
       if (result != null) {
@@ -761,117 +780,35 @@ class _FlashToolScreenState extends State<FlashToolScreen> {
       } else {
         _addLog('Read failed or was cancelled.');
       }
-    } catch (e) {
-      _addLog('Exception during read: $e');
-    } finally {
-      await _cleanupFlasher();
-    }
+    });
   }
 
   Future<void> _runFlasherErase() async {
-    if (_flasherRunning) {
-      _addLog('A flasher operation is already running.');
-      return;
-    }
-    
-    if (!await _ensurePortOpen()) return;
-
-    _createFlasher();
-    if (_currentFlasher == null) return;
-
-    setState(() {
-      _flasherRunning = true;
-      _progress = 0;
-      _hasError = false;
-    });
-
-    try {
+    await _runFlasherOperation('erase', () async {
       final ok = await _currentFlasher!.doErase(startSector: 0, sectors: 0x200000 ~/ 0x1000, eraseAll: true);
       _addLog(ok ? 'Erase complete!' : 'Erase failed or was cancelled.');
-    } catch (e) {
-      _addLog('Exception during erase: $e');
-    } finally {
-      await _cleanupFlasher();
-    }
+    });
   }
 
   Future<void> _runFlasherWrite() async {
-    if (_flasherRunning) {
-      _addLog('A flasher operation is already running.');
-      return;
-    }
-    
-    if (!await _ensurePortOpen()) return;
+    final firmwareData = await _loadSelectedFirmware();
+    if (firmwareData == null) return;
 
-    // Load firmware bytes
-    if (_selectedFirmware == '(none)' && _customFirmwarePath == null) {
-      _addLog('ERROR: No firmware selected. Please select or download a firmware first.');
-      return;
-    }
-    final fwName = _customFirmwarePath ?? _selectedFirmware;
-    _addLog('Loading firmware: $fwName ...');
-    final firmwareData = await _storage.readFile(kFirmwareStorageSubdir, fwName);
-    if (firmwareData == null || firmwareData.isEmpty) {
-      _addLog('ERROR: Could not read firmware file "$fwName".');
-      return;
-    }
-    _addLog('Firmware loaded: ${firmwareData.length} bytes');
-
-    _createFlasher();
-    if (_currentFlasher == null) return;
-
-    setState(() {
-      _flasherRunning = true;
-      _progress = 0;
-      _hasError = false;
-    });
-
-    try {
+    await _runFlasherOperation('write', () async {
       await _currentFlasher!.doWrite(0, firmwareData);
       _addLog('Write operation finished.');
-    } catch (e) {
-      _addLog('Exception during write: $e');
-    } finally {
-      await _cleanupFlasher();
-    }
+    });
   }
 
   Future<void> _runFlasherVerify() async {
-    if (_flasherRunning) {
-      _addLog('A flasher operation is already running.');
-      return;
-    }
-    
-    if (!await _ensurePortOpen()) return;
-
-    // Load firmware bytes (same as _runFlasherWrite)
-    if (_selectedFirmware == '(none)' && _customFirmwarePath == null) {
-      _addLog('ERROR: No firmware selected. Please select or download a firmware first.');
-      return;
-    }
-    final fwName = _customFirmwarePath ?? _selectedFirmware;
-    _addLog('Loading firmware: $fwName ...');
-    final firmwareData = await _storage.readFile(kFirmwareStorageSubdir, fwName);
-    if (firmwareData == null || firmwareData.isEmpty) {
-      _addLog('ERROR: Could not read firmware file "$fwName".');
-      return;
-    }
-    _addLog('Firmware loaded: ${firmwareData.length} bytes');
+    final firmwareData = await _loadSelectedFirmware();
+    if (firmwareData == null) return;
 
     // Round up to sector boundary (4K = 0x1000)
     final sectors = (firmwareData.length + 0xFFF) ~/ 0x1000;
     _addLog('Will read $sectors sectors (${sectors * 0x1000} bytes) from device for verification...');
 
-    _createFlasher();
-    if (_currentFlasher == null) return;
-
-    setState(() {
-      _flasherRunning = true;
-      _progress = 0;
-      _hasError = false;
-    });
-
-    try {
+    await _runFlasherOperation('verify', () async {
       await _currentFlasher!.doRead(startSector: 0, sectors: sectors);
       final readData = _currentFlasher!.getReadResult();
       if (readData == null) {
@@ -902,11 +839,7 @@ class _FlashToolScreenState extends State<FlashToolScreen> {
             : 'N/A';
         _addLog('VERIFY FAILED — first mismatch at offset $hex (expected $expected, got $actual).');
       }
-    } catch (e) {
-      _addLog('Exception during verify: $e');
-    } finally {
-      await _cleanupFlasher();
-    }
+    });
   }
   
   Future<void> _cleanupFlasher() async {
