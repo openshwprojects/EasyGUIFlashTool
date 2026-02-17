@@ -1,11 +1,25 @@
+import 'dart:io';
 import 'dart:typed_data';
+import 'package:file_picker/file_picker.dart';
 
-/// Native (desktop/mobile) file picker.
-/// For now, returns null on native — the drag-and-drop flow is the primary
-/// way to load files on desktop. If file_picker is added later, hook it here.
+/// Native (desktop/mobile) file picker using the file_picker package.
 Future<({String name, Uint8List bytes})?> pickFirmwareFileImplementation() async {
-  // Native platforms can use drag-and-drop or download.
-  // A full native file dialog requires the file_picker package.
-  // For now, return null to indicate "not supported via this button".
-  return null;
+  final result = await FilePicker.platform.pickFiles(
+    type: FileType.any,
+    withData: true,
+  );
+
+  if (result == null || result.files.isEmpty) return null;
+
+  final file = result.files.first;
+  Uint8List? bytes = file.bytes;
+
+  // On some platforms (desktop), bytes may be null but path is available.
+  if (bytes == null && file.path != null) {
+    bytes = await File(file.path!).readAsBytes();
+  }
+
+  if (bytes == null || bytes.isEmpty) return null;
+
+  return (name: file.name, bytes: bytes);
 }

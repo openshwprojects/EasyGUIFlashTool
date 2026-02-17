@@ -42,6 +42,9 @@ dependencies:
   # URL launcher (for opening download links on web)
   url_launcher: ^6.2.0
   desktop_drop: ^0.7.0
+  
+  # File picker (native file dialog on desktop & mobile)
+  file_picker: ^8.0.0
 
 dev_dependencies:
   flutter_test:
