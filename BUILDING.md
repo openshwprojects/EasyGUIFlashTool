@@ -12,7 +12,7 @@ Platform-specific:
 | Web      | Chrome (for testing)                          |
 | Windows  | Visual Studio 2022 with C++ desktop workload  |
 | Linux    | clang, cmake, ninja-build, pkg-config, libgtk-3-dev, liblzma-dev, libserialport-dev |
-| macOS    | Xcode, libserialport (`brew install libserialport`)  |
+| macOS    | Xcode, libserialport, automake, libtool (`brew install libserialport automake libtool`) |
 | Android  | JDK 17, Android SDK                           |
 
 ## Getting Started
