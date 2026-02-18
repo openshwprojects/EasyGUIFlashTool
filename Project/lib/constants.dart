@@ -16,6 +16,8 @@ const List<int> kCommonBaudRates = [
   230400,
   460800,
   921600,
+  1500000,
+  2000000,
 ];
 
 /// Default baud rate used when no preference has been set.
