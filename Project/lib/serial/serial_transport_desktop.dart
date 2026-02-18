@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:typed_data';
-import 'package:libserialport/libserialport.dart';
+import 'libserialport_stub.dart'
+    if (dart.library.ffi) 'package:libserialport/libserialport.dart';
 import 'serial_transport.dart';
 
 class SerialTransportDesktop implements SerialTransport {

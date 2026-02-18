@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:typed_data';
-import 'package:serial_port_win32/serial_port_win32.dart';
+import 'serial_port_win32_stub.dart'
+    if (dart.library.ffi) 'package:serial_port_win32/serial_port_win32.dart';
 import 'serial_transport.dart';
 
 /// Windows-specific serial transport using the Win32 API.
