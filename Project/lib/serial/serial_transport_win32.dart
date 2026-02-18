@@ -12,6 +12,9 @@ class SerialTransportWin32 implements SerialTransport {
   final StreamController<Uint8List> _streamController =
       StreamController<Uint8List>.broadcast();
   bool _isReading = false;
+  /// Generation counter: incremented each time the read loop is restarted.
+  /// Old read loops check this and self-terminate if they're stale.
+  int _readGen = 0;
 
   String? _selectedPortName;
   int _baudRate = 115200;
@@ -84,11 +87,12 @@ class SerialTransportWin32 implements SerialTransport {
   void _startReadLoop() {
     if (_isReading) return;
     _isReading = true;
-    _readLoop();
+    _readGen++;
+    _readLoop(_readGen);
   }
 
-  Future<void> _readLoop() async {
-    while (_isReading && _port != null && _port!.isOpened) {
+  Future<void> _readLoop(int gen) async {
+    while (_isReading && gen == _readGen && _port != null && _port!.isOpened) {
       try {
         // Use a longer polling interval (2ms vs default 500μs) to avoid
         // flooding the Dart event loop with timer callbacks. The default
@@ -99,6 +103,8 @@ class SerialTransportWin32 implements SerialTransport {
           timeout: const Duration(milliseconds: 10),
           dataPollingInterval: const Duration(milliseconds: 2),
         );
+        // Check generation again after the await — baud rate may have changed
+        if (gen != _readGen) break;
         if (data.isNotEmpty) {
           _streamController.add(Uint8List.fromList(data));
         }
@@ -174,11 +180,28 @@ class SerialTransportWin32 implements SerialTransport {
     _baudRate = baudRate;
     if (_port == null || !_port!.isOpened) return;
     try {
-      // serial_port_win32 allows direct baud rate changes — no close/reopen
-      _port!.BaudRate = baudRate;
+      // Close and reopen the port to switch baud rate.
+      // SetCommState alone does NOT cancel pending overlapped ReadFile
+      // operations — they continue reading at the old baud rate, producing
+      // garbled data. Closing the handle cancels all pending I/O and
+      // reopening creates fresh overlapped structures at the new baud.
+      // This mirrors the Web Serial transport approach.
+      _stopReadLoop();
+      await Future.delayed(const Duration(milliseconds: 20));
+      _port!.close();
+      await Future.delayed(const Duration(milliseconds: 10));
+      _port!.openWithSettings(BaudRate: baudRate);
       print('Baud rate changed to $baudRate');
+      _startReadLoop();
     } catch (e) {
       print('setBaudRate error: $e');
+      // Try to recover by reopening at the requested baud
+      try {
+        if (_port != null && !_port!.isOpened) {
+          _port!.openWithSettings(BaudRate: baudRate);
+        }
+      } catch (_) {}
+      _startReadLoop();
     }
   }
 

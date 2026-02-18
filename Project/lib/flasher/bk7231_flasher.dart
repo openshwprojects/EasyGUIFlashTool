@@ -539,14 +539,15 @@ class BK7231Flasher extends BaseFlasher {
   Future<bool> _setBaudrate(int baud, int delayMs) async {
     final txbuf = _buildCmdSetBaudRate(baud, delayMs);
     await _startCmd(txbuf, rxLen: 0, timeout: 0.5);
-    // Wait just long enough for the 12-byte TX to complete at 115200.
-    // The original C# used delayMs/2 (100ms), but on platforms where
-    // setBaudRate requires a close/reopen (e.g. Web Serial), the
-    // remaining time must be enough for that cycle to finish before
-    // the chip's configured delay expires and it sends the ACK.
-    await Future.delayed(const Duration(milliseconds: 20));
-    // Switch transport baud rate
+    // The C# original waits for BytesToWrite==0 then sleeps delayMs/2.
+    // We don't have BytesToWrite, so we wait delayMs/2 which ensures
+    // TX is fully flushed *and* the chip has started its delay timer.
+    await Future.delayed(Duration(milliseconds: delayMs ~/ 2));
+    // Switch transport baud rate (close/reopen on Win32 to cancel
+    // pending overlapped I/O that would read at the old baud rate).
     await transport.setBaudRate(baud);
+    // Small settle time for the UART hardware after reconfiguration.
+    await Future.delayed(const Duration(milliseconds: 10));
     final rxbuf = await _startCmd(null, rxLen: _rxLenSetBaudRate, timeout: 0.5);
     if (rxbuf != null && _checkRespondSetBaudRate(rxbuf, baud, delayMs)) {
       return true;
