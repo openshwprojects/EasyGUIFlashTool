@@ -12,6 +12,7 @@ Platform-specific:
 | Web      | Chrome (for testing)                          |
 | Windows  | Visual Studio 2022 with C++ desktop workload  |
 | Linux    | clang, cmake, ninja-build, pkg-config, libgtk-3-dev, liblzma-dev, libserialport-dev |
+| macOS    | Xcode, libserialport (`brew install libserialport`)  |
 | Android  | JDK 17, Android SDK                           |
 
 ## Getting Started
@@ -67,6 +68,20 @@ To run locally:
 flutter run -d linux
 ```
 
+### macOS
+
+```bash
+flutter build macos --release
+```
+
+The output is in `Project/build/macos/Build/Products/Release`.
+
+To run locally:
+
+```bash
+flutter run -d macos
+```
+
 ### Android (APK)
 
 ```bash
@@ -82,7 +97,7 @@ Two GitHub Actions workflows run on every push to `main`:
 | Workflow          | File                                  | What it does                                                  |
 |-------------------|---------------------------------------|---------------------------------------------------------------|
 | **Deploy**        | `.github/workflows/deploy.yml`        | Builds the web app and deploys to GitHub Pages                |
-| **Release**       | `.github/workflows/release.yml`       | Builds APK + Windows zip + Linux tarball and creates a GitHub Release |
+| **Release**       | `.github/workflows/release.yml`       | Builds APK + Windows zip + Linux tarball + macOS zip and creates a GitHub Release |
 
 ## Project Structure
 
@@ -95,11 +110,12 @@ Project/
 │   ├── models/              # Data models
 │   ├── providers/           # State management (Provider)
 │   ├── screens/             # UI screens
-│   ├── serial/              # Serial port abstraction (Web / Windows / Linux / Android)
+│   ├── serial/              # Serial port abstraction (Web / Windows / Linux / macOS / Android)
 │   ├── services/            # Business-logic services
 │   └── widgets/             # Reusable UI widgets
 ├── android/                 # Android runner
 ├── linux/                   # Linux runner (generated in CI)
+├── macos/                   # macOS runner (generated in CI)
 ├── windows/                 # Windows runner
 ├── web/                     # Web runner
 ├── test/                    # Tests

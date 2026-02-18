@@ -108,8 +108,48 @@ jobs:
           name: linux
           path: EasyGUIFlashTool-Linux.tar.gz
 
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install macOS dependencies
+        run: brew install libserialport
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Enable macOS desktop
+        run: flutter config --enable-macos-desktop
+
+      - name: Generate macOS runner
+        working-directory: Project
+        run: flutter create --platforms macos .
+
+      - name: Install dependencies
+        working-directory: Project
+        run: flutter pub get
+
+      - name: Build macOS
+        working-directory: Project
+        run: flutter build macos --release --build-number=${{ github.run_number }}
+
+      - name: Zip macOS app
+        run: |
+          cd Project/build/macos/Build/Products/Release
+          zip -r -y "$GITHUB_WORKSPACE/EasyGUIFlashTool-macOS.zip" *.app
+
+      - name: Upload macOS artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          path: EasyGUIFlashTool-macOS.zip
+
   create-release:
-    needs: [build-apk, build-windows, build-linux]
+    needs: [build-apk, build-windows, build-linux, build-macos]
     runs-on: ubuntu-latest
     steps:
       - name: Download APK
@@ -127,6 +167,11 @@ jobs:
         with:
           name: linux
 
+      - name: Download macOS build
+        uses: actions/download-artifact@v4
+        with:
+          name: macos
+
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
@@ -137,3 +182,4 @@ jobs:
             app-release.apk
             EasyGUIFlashTool-Windows.zip
             EasyGUIFlashTool-Linux.tar.gz
+            EasyGUIFlashTool-macOS.zip
