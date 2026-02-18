@@ -39,6 +39,7 @@ class _FlashToolScreenState extends State<FlashToolScreen> {
   bool _isDragOver = false;
   bool _flasherRunning = false;
   bool _hasError = false;
+  static const String _buildDate = String.fromEnvironment('BUILD_DATE', defaultValue: 'dev');
 
   // Firmware storage service (shared singleton)
   final FirmwareStorage _storage = FirmwareStorage();
@@ -202,6 +203,12 @@ class _FlashToolScreenState extends State<FlashToolScreen> {
               height: MediaQuery.of(context).size.height * 0.45,
               child: _buildLogField(),
             ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Build: $_buildDate',
+            style: TextStyle(fontSize: 10, color: Colors.grey.shade600),
+            textAlign: TextAlign.center,
           ),
       ],
     );
