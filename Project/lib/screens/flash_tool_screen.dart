@@ -783,15 +783,31 @@ class _FlashToolScreenState extends State<FlashToolScreen> {
       final result = _currentFlasher!.getReadResult();
       if (result != null) {
         _addLog('Read complete: ${result.length} bytes');
-        final now = DateTime.now();
-        final timestamp = '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}_${now.hour.toString().padLeft(2, '0')}${now.minute.toString().padLeft(2, '0')}';
-        final filename = 'read_result_$timestamp.bin';
+        final filename = _buildReadResultFilename();
         await saveFile(filename, result);
         _addLog('File saved/downloaded: $filename');
       } else {
         _addLog('Read failed or was cancelled.');
       }
     });
+  }
+
+  /// Build a filename for read results matching the BK7231GUIFlashTool scheme:
+  /// `readResult_{ChipType}_{QIO|UA}_{yyyy-dd-M-HH-mm-ss}.bin`
+  String _buildReadResultFilename() {
+    final chipName = _selectedPlatform.displayName;
+    // BK7231T and BK7252 use UA (read from 0x11000), others use QIO (full read from 0x0)
+    final typeStr = (_selectedPlatform == ChipPlatform.bk7231t ||
+                     _selectedPlatform == ChipPlatform.bk7252)
+        ? 'UA'
+        : 'QIO';
+    final now = DateTime.now();
+    // Match C# DateTime.Now.ToString("yyyy-dd-M-HH-mm-ss")
+    final dateStr = '${now.year}-${now.day}-${now.month}-'
+        '${now.hour.toString().padLeft(2, '0')}-'
+        '${now.minute.toString().padLeft(2, '0')}-'
+        '${now.second.toString().padLeft(2, '0')}';
+    return 'readResult_${chipName}_${typeStr}_$dateStr.bin';
   }
 
   Future<void> _runFlasherErase() async {
