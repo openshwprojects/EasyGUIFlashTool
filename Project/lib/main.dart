@@ -2,8 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'providers/serial_provider.dart';
 import 'screens/flash_tool_screen.dart';
+import 'cli/command_line_runner.dart';
 
-void main() {
+void main(List<String> args) async {
+  // If command-line arguments are provided, run in CLI mode (no GUI)
+  if (CommandLineRunner.shouldRunCli(args)) {
+    await CommandLineRunner.run(args);
+    return; // run() calls exit(), but just in case
+  }
+
   runApp(const MyApp());
 }
 
