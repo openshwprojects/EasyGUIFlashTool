@@ -59,6 +59,9 @@ class BK7231Flasher extends BaseFlasher {
   final _rxBuffer = <int>[];
   StreamSubscription<Uint8List>? _rxSub;
 
+  /// Guards the DTR/RTS warning so it is only shown once per flash operation.
+  bool _dtrRtsWarningShown = false;
+
   BK7231Flasher({
     required super.transport,
     super.chipType = BKType.bk7231n,
@@ -496,8 +499,16 @@ class BK7231Flasher extends BaseFlasher {
     // to 115200 regardless of what the UI configured.
     await transport.setBaudRate(115200);
     for (int tr = 0; tr < 100 && !isCancelled; tr++) {
-      await transport.setDTR(true);
-      await transport.setRTS(true);
+      final dtrOk = await transport.setDTR(true);
+      final rtsOk = await transport.setRTS(true);
+      if ((!dtrOk || !rtsOk) && !_dtrRtsWarningShown) {
+        _dtrRtsWarningShown = true;
+        addErrorLine('\u26a0 WARNING: DTR/RTS signals could not be set. '
+            'Auto-reset will NOT work. You must manually reset the device '
+            'into bootloader mode (e.g. by doing a short power on/off cycle '
+            'or short CEN to ground). '
+            'This is a known issue with some browser/hosting configurations.');
+      }
       await Future.delayed(const Duration(milliseconds: 50));
       await transport.setDTR(false);
       await transport.setRTS(false);

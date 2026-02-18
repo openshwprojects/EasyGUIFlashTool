@@ -81,13 +81,23 @@ class SerialTransportAndroid implements SerialTransport {
   }
 
   @override
-  Future<void> setDTR(bool value) async {
-    await _port?.setDTR(value);
+  Future<bool> setDTR(bool value) async {
+    try {
+      await _port?.setDTR(value);
+      return true;
+    } catch (e) {
+      return false;
+    }
   }
 
   @override
-  Future<void> setRTS(bool value) async {
-    await _port?.setRTS(value);
+  Future<bool> setRTS(bool value) async {
+    try {
+      await _port?.setRTS(value);
+      return true;
+    } catch (e) {
+      return false;
+    }
   }
 
   @override

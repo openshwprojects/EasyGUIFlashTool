@@ -141,26 +141,30 @@ class SerialTransportWin32 implements SerialTransport {
   }
 
   @override
-  Future<void> setDTR(bool value) async {
-    if (_port == null || !_port!.isOpened) return;
+  Future<bool> setDTR(bool value) async {
+    if (_port == null || !_port!.isOpened) return false;
     try {
       _port!.setFlowControlSignal(
         value ? SerialPort.SETDTR : SerialPort.CLRDTR,
       );
+      return true;
     } catch (e) {
       print('setDTR error: $e');
+      return false;
     }
   }
 
   @override
-  Future<void> setRTS(bool value) async {
-    if (_port == null || !_port!.isOpened) return;
+  Future<bool> setRTS(bool value) async {
+    if (_port == null || !_port!.isOpened) return false;
     try {
       _port!.setFlowControlSignal(
         value ? SerialPort.SETRTS : SerialPort.CLRRTS,
       );
+      return true;
     } catch (e) {
       print('setRTS error: $e');
+      return false;
     }
   }
 

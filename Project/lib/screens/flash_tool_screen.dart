@@ -31,7 +31,7 @@ class _FlashToolScreenState extends State<FlashToolScreen> {
   bool _useCustomBaud = false;
 
   // --- GUI-layer state (not in provider) ---
-  final List<String> _logLines = [];
+  final List<({String text, LogLevel level})> _logLines = [];
   double _progress = 0.0;
   ChipPlatform _selectedPlatform = ChipPlatform.bk7231t;
   String _selectedFirmware = '(none)';
@@ -118,13 +118,13 @@ class _FlashToolScreenState extends State<FlashToolScreen> {
     }
   }
 
-  void _addLog(String message) {
+  void _addLog(String message, [LogLevel level = LogLevel.info]) {
     final now = DateTime.now();
     final ts = '${now.hour.toString().padLeft(2, '0')}:'
         '${now.minute.toString().padLeft(2, '0')}:'
         '${now.second.toString().padLeft(2, '0')}';
     setState(() {
-      _logLines.add('[$ts] $message');
+      _logLines.add((text: '[$ts] $message', level: level));
     });
     _scrollLogToBottom();
   }
@@ -706,7 +706,7 @@ class _FlashToolScreenState extends State<FlashToolScreen> {
     // Wire logging callbacks
     _currentFlasher!.onLog = (msg, level) {
       if (mounted) {
-        _addLog(msg.trimRight());
+        _addLog(msg.trimRight(), level);
         if (level == LogLevel.error && !_hasError) {
           setState(() => _hasError = true);
         }
@@ -1031,7 +1031,7 @@ class _FlashToolScreenState extends State<FlashToolScreen> {
               onPressed: _logLines.isEmpty
                   ? null
                   : () {
-                      Clipboard.setData(ClipboardData(text: _logLines.join('\n')));
+                      Clipboard.setData(ClipboardData(text: _logLines.map((e) => e.text).join('\n')));
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(
                           content: Text('Log copied to clipboard'),
@@ -1084,12 +1084,24 @@ class _FlashToolScreenState extends State<FlashToolScreen> {
                     padding: const EdgeInsets.all(10),
                     itemCount: _logLines.length,
                     itemBuilder: (context, index) {
+                      final entry = _logLines[index];
+                      Color color;
+                      switch (entry.level) {
+                        case LogLevel.error:
+                          color = Colors.red;
+                        case LogLevel.warning:
+                          color = Colors.orange;
+                        case LogLevel.success:
+                          color = Colors.green;
+                        case LogLevel.info:
+                          color = Colors.greenAccent;
+                      }
                       return Text(
-                        _logLines[index],
-                        style: const TextStyle(
+                        entry.text,
+                        style: TextStyle(
                           fontFamily: 'monospace',
                           fontSize: 12,
-                          color: Colors.greenAccent,
+                          color: color,
                           height: 1.5,
                         ),
                       );

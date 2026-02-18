@@ -21,10 +21,10 @@ class SerialTransportImpl implements SerialTransport {
   void write(Uint8List data) {}
 
   @override
-  Future<void> setDTR(bool value) async {}
+  Future<bool> setDTR(bool value) async => true;
 
   @override
-  Future<void> setRTS(bool value) async {}
+  Future<bool> setRTS(bool value) async => true;
 
   @override
   Future<void> setBaudRate(int baudRate) async {}

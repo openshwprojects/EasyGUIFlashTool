@@ -153,26 +153,30 @@ class SerialTransportWeb implements SerialTransport {
   }
 
   @override
-  Future<void> setDTR(bool value) async {
-    if (_port == null) return;
+  Future<bool> setDTR(bool value) async {
+    if (_port == null) return false;
     try {
       final signals = JSObject();
       signals.setProperty('dataTerminalReady'.toJS, value.toJS);
       await (_port!.callMethod('setSignals'.toJS, signals) as JSPromise).toDart;
+      return true;
     } catch (e) {
       debugPrint('setDTR error: $e');
+      return false;
     }
   }
 
   @override
-  Future<void> setRTS(bool value) async {
-    if (_port == null) return;
+  Future<bool> setRTS(bool value) async {
+    if (_port == null) return false;
     try {
       final signals = JSObject();
       signals.setProperty('requestToSend'.toJS, value.toJS);
       await (_port!.callMethod('setSignals'.toJS, signals) as JSPromise).toDart;
+      return true;
     } catch (e) {
       debugPrint('setRTS error: $e');
+      return false;
     }
   }
 

@@ -8,8 +8,8 @@ abstract class SerialTransport {
   Future<bool> connect();
   Future<void> disconnect();
   void write(Uint8List data);
-  Future<void> setDTR(bool value);
-  Future<void> setRTS(bool value);
+  Future<bool> setDTR(bool value);
+  Future<bool> setRTS(bool value);
   Future<void> setBaudRate(int baudRate);
   void dispose();
 }

@@ -136,24 +136,28 @@ class SerialTransportDesktop implements SerialTransport {
   }
 
   @override
-  Future<void> setDTR(bool value) async {
-    if (_port == null || !_port!.isOpen || _cachedConfig == null) return;
+  Future<bool> setDTR(bool value) async {
+    if (_port == null || !_port!.isOpen || _cachedConfig == null) return false;
     try {
       _cachedConfig!.dtr = value ? SerialPortDtr.on : SerialPortDtr.off;
       _port!.config = _cachedConfig!;
+      return true;
     } catch (e) {
       print('setDTR error: $e');
+      return false;
     }
   }
 
   @override
-  Future<void> setRTS(bool value) async {
-    if (_port == null || !_port!.isOpen || _cachedConfig == null) return;
+  Future<bool> setRTS(bool value) async {
+    if (_port == null || !_port!.isOpen || _cachedConfig == null) return false;
     try {
       _cachedConfig!.rts = value ? SerialPortRts.on : SerialPortRts.off;
       _port!.config = _cachedConfig!;
+      return true;
     } catch (e) {
       print('setRTS error: $e');
+      return false;
     }
   }
 
