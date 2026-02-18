@@ -129,6 +129,17 @@ class _FlashToolScreenState extends State<FlashToolScreen> {
     _scrollLogToBottom();
   }
 
+  /// Common preamble logged at the start of every flasher action.
+  void _logOperationStart(String opName, {bool logFirmware = true}) {
+    final now = DateTime.now();
+    final weekday = const ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'][now.weekday - 1];
+    final month = const ['January','February','March','April','May','June','July','August','September','October','November','December'][now.month - 1];
+    _addLog('=== $weekday, $month ${now.day}, ${now.year} ===');
+    _addLog('=== Starting $opName ===');
+    _addLog('Platform: $_selectedPlatform');
+    if (logFirmware) _addLog('Firmware: ${_customFirmwarePath ?? _selectedFirmware}');
+  }
+
   void _scrollLogToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_logScrollController.hasClients) {
@@ -876,9 +887,7 @@ class _FlashToolScreenState extends State<FlashToolScreen> {
           onPressed: _flasherRunning
               ? null
               : () {
-                  _addLog('=== Starting Backup & Flash ===');
-                  _addLog('Platform: $_selectedPlatform');
-                  _addLog('Firmware: ${_customFirmwarePath ?? _selectedFirmware}');
+                  _logOperationStart('Backup & Flash');
                   _runFlasherRead(fullRead: true);
                 },
         ),
@@ -889,8 +898,7 @@ class _FlashToolScreenState extends State<FlashToolScreen> {
           onPressed: _flasherRunning
               ? null
               : () {
-                  _addLog('=== Starting Backup (Read) ===');
-                  _addLog('Platform: $_selectedPlatform');
+                  _logOperationStart('Backup (Read)', logFirmware: false);
                   _runFlasherRead(fullRead: true);
                 },
         ),
@@ -901,9 +909,7 @@ class _FlashToolScreenState extends State<FlashToolScreen> {
           onPressed: _flasherRunning
               ? null
               : () {
-                  _addLog('=== Starting Firmware Write ===');
-                  _addLog('Platform: $_selectedPlatform');
-                  _addLog('Firmware: ${_customFirmwarePath ?? _selectedFirmware}');
+                  _logOperationStart('Firmware Write');
                   _runFlasherWrite();
                 },
         ),
@@ -914,9 +920,7 @@ class _FlashToolScreenState extends State<FlashToolScreen> {
           onPressed: _flasherRunning
               ? null
               : () {
-                  _addLog('=== Starting Verify ===');
-                  _addLog('Platform: $_selectedPlatform');
-                  _addLog('Firmware: ${_customFirmwarePath ?? _selectedFirmware}');
+                  _logOperationStart('Verify');
                   _runFlasherVerify();
                 },
         ),
@@ -927,8 +931,7 @@ class _FlashToolScreenState extends State<FlashToolScreen> {
           onPressed: _flasherRunning
               ? null
               : () {
-                  _addLog('=== Starting Erase ===');
-                  _addLog('Platform: $_selectedPlatform');
+                  _logOperationStart('Erase', logFirmware: false);
                   _runFlasherErase();
                 },
         ),
