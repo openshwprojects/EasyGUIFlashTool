@@ -825,13 +825,13 @@ class _FlashToolScreenState extends State<FlashToolScreen> {
 
   /// Build a filename for read results matching the BK7231GUIFlashTool scheme:
   /// `readResult_{ChipType}_{QIO|UA}_{yyyy-dd-M-HH-mm-ss}.bin`
+  ///
+  /// EasyGUIFlashTool always reads from offset 0x0 (full flash), so we always
+  /// use QIO. The original C# tool uses UA only when reading from 0x11000
+  /// (skipping the bootloader).
   String _buildReadResultFilename() {
     final chipName = _selectedPlatform.displayName;
-    // BK7231T and BK7252 use UA (read from 0x11000), others use QIO (full read from 0x0)
-    final typeStr = (_selectedPlatform == ChipPlatform.bk7231t ||
-                     _selectedPlatform == ChipPlatform.bk7252)
-        ? 'UA'
-        : 'QIO';
+    final typeStr = 'QIO';
     final now = DateTime.now();
     // Match C# DateTime.Now.ToString("yyyy-dd-M-HH-mm-ss")
     final dateStr = '${now.year}-${now.day}-${now.month}-'

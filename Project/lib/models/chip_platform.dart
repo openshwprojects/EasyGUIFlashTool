@@ -7,6 +7,7 @@ import '../flasher/base_flasher.dart';
 
 enum ChipPlatform {
   bk7231t('BK7231T'),
+  bk7231u('BK7231U'),
   bk7231n('BK7231N'),
   bk7231m('BK7231M'),
   bk7238('BK7238'),
@@ -44,6 +45,7 @@ enum ChipPlatform {
       case ChipPlatform.bk7258:
         return 'Open${displayName}_QIO_';
       case ChipPlatform.bk7231t:
+      case ChipPlatform.bk7231u:
       case ChipPlatform.bk7252:
         return 'Open${displayName}_UA_';
       default:
@@ -63,6 +65,7 @@ extension ChipPlatformFlasher on ChipPlatform {
   BKType? get bkType {
     switch (this) {
       case ChipPlatform.bk7231t: return BKType.bk7231t;
+      case ChipPlatform.bk7231u: return BKType.bk7231u;
       case ChipPlatform.bk7231n: return BKType.bk7231n;
       case ChipPlatform.bk7231m: return BKType.bk7231m;
       case ChipPlatform.bk7238:  return BKType.bk7238;

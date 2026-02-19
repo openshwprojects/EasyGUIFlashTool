@@ -469,7 +469,7 @@ class CommandLineRunner {
         '${now.hour.toString().padLeft(2, '0')}-'
         '${now.minute.toString().padLeft(2, '0')}-'
         '${now.second.toString().padLeft(2, '0')}';
-    return '${outputName}_${chipType.name}_$dateStr.bin';
+    return '${outputName}_${chipType.displayName}_$dateStr.bin';
   }
 
   static Future<void> _saveToBackups(String filename, Uint8List data) async {

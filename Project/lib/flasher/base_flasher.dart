@@ -16,7 +16,14 @@ export '../models/log_level.dart';
 enum BKType {
   bk7231t, bk7231u, bk7231n, bk7231m,
   bk7238, bk7236, bk7252, bk7252n, bk7258,
-  detect, invalid,
+  detect, invalid;
+
+  /// Human-readable chip name matching C# BK7231GUIFlashTool style.
+  /// Derives uppercase name automatically from the Dart enum name.
+  String get displayName => name.toUpperCase();
+
+  @override
+  String toString() => displayName;
 }
 
 /// Write mode for combined read-and-write operations.
