@@ -299,15 +299,22 @@ class _FlashToolScreenState extends State<FlashToolScreen> {
       children: [
         const Icon(Icons.usb, size: 20),
         const SizedBox(width: 6),
-        DropdownButton<String>(
-          value: provider.selectedPort != null && ports.contains(provider.selectedPort)
+        DropdownMenu<String>(
+          initialSelection: provider.selectedPort != null && ports.contains(provider.selectedPort)
               ? provider.selectedPort
               : ports.first,
-          hint: const Text('Select Port'),
-          items: ports.map((port) {
-            return DropdownMenuItem(value: port, child: Text(port));
+          hintText: 'Select Port',
+          requestFocusOnTap: false,
+          enabled: !provider.isConnected,
+          inputDecorationTheme: const InputDecorationTheme(
+            border: InputBorder.none,
+            isDense: true,
+            contentPadding: EdgeInsets.symmetric(horizontal: 8),
+          ),
+          dropdownMenuEntries: ports.map((port) {
+            return DropdownMenuEntry(value: port, label: port);
           }).toList(),
-          onChanged: provider.isConnected
+          onSelected: provider.isConnected
               ? null
               : (value) {
                   if (value != null) provider.setPort(value);
@@ -329,14 +336,21 @@ class _FlashToolScreenState extends State<FlashToolScreen> {
         const Icon(Icons.speed, size: 20),
         const SizedBox(width: 6),
         if (!_useCustomBaud)
-          DropdownButton<int>(
-            value: _commonBaudRates.contains(provider.baudRate)
+          DropdownMenu<int>(
+            initialSelection: _commonBaudRates.contains(provider.baudRate)
                 ? provider.baudRate
                 : _commonBaudRates[4], // default 115200
-            items: _commonBaudRates.map((rate) {
-              return DropdownMenuItem(value: rate, child: Text('$rate'));
+            requestFocusOnTap: false,
+            enabled: !provider.isConnected,
+            inputDecorationTheme: const InputDecorationTheme(
+              border: InputBorder.none,
+              isDense: true,
+              contentPadding: EdgeInsets.symmetric(horizontal: 8),
+            ),
+            dropdownMenuEntries: _commonBaudRates.map((rate) {
+              return DropdownMenuEntry(value: rate, label: '$rate');
             }).toList(),
-            onChanged: provider.isConnected
+            onSelected: provider.isConnected
                 ? null
                 : (value) {
                     if (value != null) provider.setBaudRate(value);
@@ -476,20 +490,25 @@ class _FlashToolScreenState extends State<FlashToolScreen> {
           const SizedBox(width: 10),
           const Text('Platform:', style: TextStyle(fontWeight: FontWeight.w600)),
           const SizedBox(width: 12),
-          DropdownButton<ChipPlatform>(
-            value: _selectedPlatform,
-            underline: const SizedBox(),
-            items: ChipPlatform.values.map((p) {
-              return DropdownMenuItem(value: p, child: Text(p.displayName));
+          DropdownMenu<ChipPlatform>(
+            initialSelection: _selectedPlatform,
+            requestFocusOnTap: false,
+            inputDecorationTheme: const InputDecorationTheme(
+              border: InputBorder.none,
+              isDense: true,
+              contentPadding: EdgeInsets.symmetric(horizontal: 8),
+            ),
+            dropdownMenuEntries: ChipPlatform.values.map((p) {
+              return DropdownMenuEntry(value: p, label: p.displayName);
             }).toList(),
-              onChanged: (value) {
-                if (value != null) {
-                  setState(() => _selectedPlatform = value);
-                  _saveUiSetting('ui_platform', value.name);
-                  _addLog('Platform changed to ${value.displayName}');
-                  _refreshFirmwareList();
-                }
-              },
+            onSelected: (value) {
+              if (value != null) {
+                setState(() => _selectedPlatform = value);
+                _saveUiSetting('ui_platform', value.name);
+                _addLog('Platform changed to ${value.displayName}');
+                _refreshFirmwareList();
+              }
+            },
           ),
         ],
       ),
@@ -563,13 +582,18 @@ class _FlashToolScreenState extends State<FlashToolScreen> {
                   ],
                 ),
                 if (!_isDragOver) ...[
-                  DropdownButton<String>(
-                    value: _selectedFirmware,
-                    underline: const SizedBox(),
-                    items: _availableFirmwares.map((f) {
-                      return DropdownMenuItem(value: f, child: Text(f));
+                  DropdownMenu<String>(
+                    initialSelection: _selectedFirmware,
+                    requestFocusOnTap: false,
+                    inputDecorationTheme: const InputDecorationTheme(
+                      border: InputBorder.none,
+                      isDense: true,
+                      contentPadding: EdgeInsets.symmetric(horizontal: 8),
+                    ),
+                    dropdownMenuEntries: _availableFirmwares.map((f) {
+                      return DropdownMenuEntry(value: f, label: f);
                     }).toList(),
-                    onChanged: (value) {
+                    onSelected: (value) {
                       if (value != null) {
                         setState(() {
                           _selectedFirmware = value;
