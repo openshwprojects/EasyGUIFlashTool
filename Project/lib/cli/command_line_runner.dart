@@ -10,6 +10,7 @@ import 'dart:typed_data';
 
 import '../flasher/base_flasher.dart';
 import '../flasher/bk7231_flasher.dart';
+import '../flasher/bl602_flasher.dart';
 import '../models/chip_platform.dart';
 import '../models/log_level.dart';
 import '../serial/serial_io_mobile.dart' as io;
@@ -171,7 +172,7 @@ class CommandLineRunner {
     final bkType = platform.bkType;
     if (bkType == null) {
       stderr.writeln(
-          'Error: ${platform.displayName} is not a BK-family chip — '
+          'Error: ${platform.displayName} is not supported — '
           'flasher not yet implemented in EasyGUIFlashTool.');
       exit(1);
     }
@@ -218,11 +219,25 @@ class CommandLineRunner {
       } catch (_) {}
     }
 
-    final flasher = BK7231Flasher(
-      transport: transport,
-      chipType: chipType,
-      baudrate: baud,
-    );
+    // Select the right flasher based on chip type
+    final bool isBL = chipType == BKType.bl602 ||
+        chipType == BKType.bl702 ||
+        chipType == BKType.bl616;
+
+    final BaseFlasher flasher;
+    if (isBL) {
+      flasher = BL602Flasher(
+        transport: transport,
+        chipType: chipType,
+        baudrate: baud,
+      );
+    } else {
+      flasher = BK7231Flasher(
+        transport: transport,
+        chipType: chipType,
+        baudrate: baud,
+      );
+    }
 
     // Wire logging to console
     flasher.onLog = (msg, level) {
@@ -281,7 +296,7 @@ class CommandLineRunner {
   // ════════════════════════════════════════════════════════════════════════
 
   static Future<int> _doRead(
-      BK7231Flasher flasher, BKType chipType, String outputName) async {
+      BaseFlasher flasher, BKType chipType, String outputName) async {
     stdout.writeln('Starting full flash read...');
 
     const flashSize = 0x200000;
@@ -302,7 +317,7 @@ class CommandLineRunner {
     }
   }
 
-  static Future<int> _doWrite(BK7231Flasher flasher, String writeFile) async {
+  static Future<int> _doWrite(BaseFlasher flasher, String writeFile) async {
     final file = File(writeFile);
     if (!file.existsSync()) {
       stderr.writeln('Error: File not found: $writeFile');
@@ -320,7 +335,7 @@ class CommandLineRunner {
   }
 
   static Future<int> _doCustomRead(
-      BK7231Flasher flasher, int ofs, int len, String outputName) async {
+      BaseFlasher flasher, int ofs, int len, String outputName) async {
     stdout.writeln(
         'Starting custom read: offset=0x${ofs.toRadixString(16)}, '
         'length=0x${len.toRadixString(16)}...');
@@ -343,7 +358,7 @@ class CommandLineRunner {
   }
 
   static Future<int> _doCustomWrite(
-      BK7231Flasher flasher, int ofs, String writeFile) async {
+      BaseFlasher flasher, int ofs, String writeFile) async {
     final file = File(writeFile);
     if (!file.existsSync()) {
       stderr.writeln('Error: File not found: $writeFile');
@@ -360,7 +375,7 @@ class CommandLineRunner {
     return 0;
   }
 
-  static Future<int> _doTest(BK7231Flasher flasher, int ofs, int len) async {
+  static Future<int> _doTest(BaseFlasher flasher, int ofs, int len) async {
     stdout.writeln(
         'Starting Read/Write/Verify test at offset '
         '0x${ofs.toRadixString(16)}, length 0x${len.toRadixString(16)}...');

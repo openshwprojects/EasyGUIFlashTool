@@ -46,6 +46,9 @@ dependencies:
   # File picker (native file dialog on desktop & mobile)
   file_picker: ^8.0.0
 
+  # SHA256 hashing (BL602 flash verification)
+  crypto: ^3.0.3
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -53,3 +56,5 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/floaders/

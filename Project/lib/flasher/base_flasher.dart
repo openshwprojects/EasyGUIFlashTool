@@ -16,6 +16,7 @@ export '../models/log_level.dart';
 enum BKType {
   bk7231t, bk7231u, bk7231n, bk7231m,
   bk7238, bk7236, bk7252, bk7252n, bk7258,
+  bl602, bl702, bl616,
   detect, invalid;
 
   /// Human-readable chip name matching C# BK7231GUIFlashTool style.

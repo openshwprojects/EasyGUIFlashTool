@@ -17,6 +17,7 @@ enum ChipPlatform {
   bk7258('BK7258'),
   bl602('BL602'),
   bl702('BL702'),
+  bl616('BL616'),
   w600('W600'),
   w800('W800'),
   ln882h('LN882H'),
@@ -58,9 +59,6 @@ enum ChipPlatform {
 }
 
 /// Extension to convert UI [ChipPlatform] to the flasher's [BKType] enum.
-/// Returns null for non-BK platforms (BL602, W600, ESP32, etc.).
-///
-/// Import: `import '../flasher/base_flasher.dart';`
 extension ChipPlatformFlasher on ChipPlatform {
   BKType? get bkType {
     switch (this) {
@@ -73,6 +71,9 @@ extension ChipPlatformFlasher on ChipPlatform {
       case ChipPlatform.bk7252:  return BKType.bk7252;
       case ChipPlatform.bk7252n: return BKType.bk7252n;
       case ChipPlatform.bk7258:  return BKType.bk7258;
+      case ChipPlatform.bl602:   return BKType.bl602;
+      case ChipPlatform.bl702:   return BKType.bl702;
+      case ChipPlatform.bl616:   return BKType.bl616;
       default: return null;
     }
   }

@@ -11,6 +11,7 @@ import '../widgets/download_dialog.dart';
 import '../models/chip_platform.dart';
 import '../constants.dart';
 import '../flasher/bk7231_flasher.dart';
+import '../flasher/bl602_flasher.dart';
 import '../flasher/base_flasher.dart';
 import 'package:desktop_drop/desktop_drop.dart';
 import '../services/file_opener.dart';
@@ -720,20 +721,33 @@ class _FlashToolScreenState extends State<FlashToolScreen> {
 
   // ── Flasher integration helpers ──────────────────────────────────────
 
-  BK7231Flasher? _currentFlasher;
+  BaseFlasher? _currentFlasher;
 
   void _createFlasher() {
     final provider = context.read<SerialProvider>();
     final bkType = _selectedPlatform.bkType;
     if (bkType == null) {
-      _addLog('ERROR: ${_selectedPlatform.displayName} is not a BK-family chip — flasher not available.');
+      _addLog('ERROR: ${_selectedPlatform.displayName} is not supported — flasher not available.');
       return;
     }
-    _currentFlasher = BK7231Flasher(
-      transport: provider.transport,
-      chipType: bkType,
-      baudrate: provider.baudRate,
-    );
+
+    final bool isBL = bkType == BKType.bl602 ||
+        bkType == BKType.bl702 ||
+        bkType == BKType.bl616;
+
+    if (isBL) {
+      _currentFlasher = BL602Flasher(
+        transport: provider.transport,
+        chipType: bkType,
+        baudrate: provider.baudRate,
+      );
+    } else {
+      _currentFlasher = BK7231Flasher(
+        transport: provider.transport,
+        chipType: bkType,
+        baudrate: provider.baudRate,
+      );
+    }
     // Wire logging callbacks
     _currentFlasher!.onLog = (msg, level) {
       if (mounted) {
