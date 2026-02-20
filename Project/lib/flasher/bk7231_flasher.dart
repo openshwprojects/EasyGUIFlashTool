@@ -636,12 +636,15 @@ class BK7231Flasher extends BaseFlasher {
   //  SECTOR-LEVEL OPERATIONS
   // ════════════════════════════════════════════════════════════════════════
 
+  // can't touch bootloader of BK7231T
   bool _isSectorModificationAllowed(int addr) {
     if (addr >= _flashSize) {
       addError('ERROR: Out of range write/erase attempt detected');
       return false;
     }
     addr %= _flashSize;
+    // can't touch bootloader of BK7231T — reject any attempt to modify
+    // sectors within the bootloader region for BK7231T/BK7231U
     if (chipType != BKType.bk7231t && chipType != BKType.bk7231u) return true;
     if (addr >= 0 && addr < bootloaderSize) {
       addError('ERROR: T bootloader overwriting attempt detected');

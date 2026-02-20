@@ -271,7 +271,7 @@ class CommandLineRunner {
         case _CliOperation.read:
           return await _doRead(flasher, chipType, outputName);
         case _CliOperation.write:
-          return await _doWrite(flasher, writeFile!);
+          return await _doWrite(flasher, chipType, writeFile!);
         case _CliOperation.customRead:
           return await _doCustomRead(flasher, ofs, len, outputName);
         case _CliOperation.customWrite:
@@ -317,7 +317,7 @@ class CommandLineRunner {
     }
   }
 
-  static Future<int> _doWrite(BaseFlasher flasher, String writeFile) async {
+  static Future<int> _doWrite(BaseFlasher flasher, BKType chipType, String writeFile) async {
     final file = File(writeFile);
     if (!file.existsSync()) {
       stderr.writeln('Error: File not found: $writeFile');
@@ -325,10 +325,30 @@ class CommandLineRunner {
     }
 
     stdout.writeln('Starting write from $writeFile...');
-    final data = Uint8List.fromList(await file.readAsBytes());
+    var data = Uint8List.fromList(await file.readAsBytes());
     stdout.writeln('Firmware size: ${data.length} bytes');
 
-    await flasher.doWrite(0, data);
+    int startSector = 0;
+    // can't touch bootloader of BK7231T
+    if (chipType == BKType.bk7231t || chipType == BKType.bk7231u) {
+      final fwUpper = writeFile.toUpperCase();
+      if (fwUpper.contains('_QIO_')) {
+        // QIO binary includes bootloader — skip bootloader portion of data
+        startSector = BK7231Flasher.bootloaderSize;
+        if (data.length > BK7231Flasher.bootloaderSize) {
+          data = Uint8List.sublistView(data, BK7231Flasher.bootloaderSize);
+          stdout.writeln('Using hack to write QIO — just skip bootloader...');
+          stdout.writeln('... so bootloader will not be overwritten!');
+        }
+      } else {
+        // UA binary has no bootloader — write it at the bootloader end offset
+        startSector = BK7231Flasher.bootloaderSize;
+        stdout.writeln('UA binary — writing at bootloader end offset '
+            '0x${startSector.toRadixString(16).toUpperCase()}');
+      }
+    }
+
+    await flasher.doWrite(startSector, data);
 
     stdout.writeln('\nWrite completed successfully.');
     return 0;

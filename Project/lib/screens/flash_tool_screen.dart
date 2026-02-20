@@ -857,17 +857,49 @@ class _FlashToolScreenState extends State<FlashToolScreen> {
 
   Future<void> _runFlasherErase() async {
     await _runFlasherOperation('erase', () async {
-      final ok = await _currentFlasher!.doErase(startSector: 0, sectors: 0x200000 ~/ 0x1000, eraseAll: true);
+      // can't touch bootloader of BK7231T
+      final bkType = _selectedPlatform.bkType;
+      final int startOfs;
+      if (bkType == BKType.bk7231t || bkType == BKType.bk7231u) {
+        startOfs = BK7231Flasher.bootloaderSize;
+        _addLog('BK7231T/U mode — erase will skip bootloader (start at ${_currentFlasher!.formatHex(startOfs)})');
+      } else {
+        startOfs = BK7231Flasher.bootloaderSize;
+      }
+      final sectors = (0x200000 - startOfs) ~/ 0x1000;
+      final ok = await _currentFlasher!.doErase(startSector: startOfs, sectors: sectors, eraseAll: true);
       _addLog(ok ? 'Erase complete!' : 'Erase failed or was cancelled.');
     });
   }
 
   Future<void> _runFlasherWrite() async {
-    final firmwareData = await _loadSelectedFirmware();
+    var firmwareData = await _loadSelectedFirmware();
     if (firmwareData == null) return;
 
     await _runFlasherOperation('write', () async {
-      await _currentFlasher!.doWrite(0, firmwareData);
+      int startSector = 0;
+      final bkType = _selectedPlatform.bkType;
+      // can't touch bootloader of BK7231T
+      if (bkType == BKType.bk7231t || bkType == BKType.bk7231u) {
+        final fwName = (_customFirmwarePath ?? _selectedFirmware).toUpperCase();
+        if (fwName.contains('_QIO_')) {
+          // QIO binary includes bootloader — skip bootloader portion of data
+          // and write starting after the bootloader
+          startSector = BK7231Flasher.bootloaderSize;
+          if (firmwareData!.length > BK7231Flasher.bootloaderSize) {
+            firmwareData = Uint8List.sublistView(
+              firmwareData!, BK7231Flasher.bootloaderSize);
+            _addLog('Using hack to write QIO — just skip bootloader...');
+            _addLog('... so bootloader will not be overwritten!');
+          }
+        } else {
+          // UA binary has no bootloader — write it at the bootloader end offset
+          startSector = BK7231Flasher.bootloaderSize;
+          _addLog('UA binary detected — writing at bootloader end offset '
+              '${_currentFlasher!.formatHex(startSector)}');
+        }
+      }
+      await _currentFlasher!.doWrite(startSector, firmwareData!);
       _addLog('Write operation finished.');
     });
   }
