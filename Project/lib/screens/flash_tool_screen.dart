@@ -822,18 +822,61 @@ class _FlashToolScreenState extends State<FlashToolScreen> {
     }
   }
 
+  // ── Core read helper (used by read-only and backup-and-flash) ──────
+
+  /// Reads the full flash content, saves it to a file, and returns true
+  /// on success. Must be called inside a [_runFlasherOperation] body.
+  Future<bool> _doReadAndSave({bool fullRead = false}) async {
+    await _currentFlasher!.doRead(
+        startSector: 0, sectors: 0x200000 ~/ 0x1000, fullRead: fullRead);
+    final result = _currentFlasher!.getReadResult();
+    if (result != null) {
+      _addLog('Read complete: ${result.length} bytes');
+      final filename = _buildReadResultFilename();
+      await saveFile(filename, result);
+      _addLog('Backup saved: $filename');
+      return true;
+    }
+    _addLog('Read failed or was cancelled.');
+    return false;
+  }
+
+  // ── Core write helper (used by write and backup-and-flash) ────────
+
+  /// Writes [firmwareData] to the flash, respecting BK7231T/U bootloader
+  /// protection. Must be called inside a [_runFlasherOperation] body.
+  Future<void> _doWriteFirmware(Uint8List firmwareData) async {
+    int startSector = 0;
+    final bkType = _selectedPlatform.bkType;
+    // can't touch bootloader of BK7231T
+    if (bkType == BKType.bk7231t || bkType == BKType.bk7231u) {
+      final fwName = (_customFirmwarePath ?? _selectedFirmware).toUpperCase();
+      if (fwName.contains('_QIO_')) {
+        // QIO binary includes bootloader — skip bootloader portion of data
+        // and write starting after the bootloader
+        startSector = BK7231Flasher.bootloaderSize;
+        if (firmwareData.length > BK7231Flasher.bootloaderSize) {
+          firmwareData = Uint8List.sublistView(
+              firmwareData, BK7231Flasher.bootloaderSize);
+          _addLog('Using hack to write QIO — just skip bootloader...');
+          _addLog('... so bootloader will not be overwritten!');
+        }
+      } else {
+        // UA binary has no bootloader — write it at the bootloader end offset
+        startSector = BK7231Flasher.bootloaderSize;
+        _addLog('UA binary detected — writing at bootloader end offset '
+            '${_currentFlasher!.formatHex(startSector)}');
+      }
+    }
+    await _currentFlasher!.doWrite(startSector, firmwareData);
+    _addLog('Write operation finished.');
+  }
+
+  // ── Public flasher operations ─────────────────────────────────────
+
   Future<void> _runFlasherRead({bool fullRead = false}) async {
     await _runFlasherOperation('read', () async {
-      await _currentFlasher!.doRead(startSector: 0, sectors: 0x200000 ~/ 0x1000, fullRead: fullRead);
-      final result = _currentFlasher!.getReadResult();
-      if (result != null) {
-        _addLog('Read complete: ${result.length} bytes');
-        final filename = _buildReadResultFilename();
-        await saveFile(filename, result);
-        _addLog('File saved/downloaded: $filename');
-      } else {
-        _addLog('Read failed or was cancelled.');
-      }
+      await _doReadAndSave(fullRead: fullRead);
     });
   }
 
@@ -873,34 +916,28 @@ class _FlashToolScreenState extends State<FlashToolScreen> {
   }
 
   Future<void> _runFlasherWrite() async {
-    var firmwareData = await _loadSelectedFirmware();
+    final firmwareData = await _loadSelectedFirmware();
     if (firmwareData == null) return;
 
     await _runFlasherOperation('write', () async {
-      int startSector = 0;
-      final bkType = _selectedPlatform.bkType;
-      // can't touch bootloader of BK7231T
-      if (bkType == BKType.bk7231t || bkType == BKType.bk7231u) {
-        final fwName = (_customFirmwarePath ?? _selectedFirmware).toUpperCase();
-        if (fwName.contains('_QIO_')) {
-          // QIO binary includes bootloader — skip bootloader portion of data
-          // and write starting after the bootloader
-          startSector = BK7231Flasher.bootloaderSize;
-          if (firmwareData!.length > BK7231Flasher.bootloaderSize) {
-            firmwareData = Uint8List.sublistView(
-              firmwareData!, BK7231Flasher.bootloaderSize);
-            _addLog('Using hack to write QIO — just skip bootloader...');
-            _addLog('... so bootloader will not be overwritten!');
-          }
-        } else {
-          // UA binary has no bootloader — write it at the bootloader end offset
-          startSector = BK7231Flasher.bootloaderSize;
-          _addLog('UA binary detected — writing at bootloader end offset '
-              '${_currentFlasher!.formatHex(startSector)}');
-        }
+      await _doWriteFirmware(firmwareData);
+    });
+  }
+
+  Future<void> _runFlasherBackupAndFlash() async {
+    final firmwareData = await _loadSelectedFirmware();
+    if (firmwareData == null) return;
+
+    await _runFlasherOperation('backup & flash', () async {
+      _addLog('=== Step 1/2: Backup (read) ===');
+      final ok = await _doReadAndSave(fullRead: true);
+      if (!ok) {
+        _addLog('Aborting flash — backup failed.');
+        return;
       }
-      await _currentFlasher!.doWrite(startSector, firmwareData!);
-      _addLog('Write operation finished.');
+
+      _addLog('=== Step 2/2: Flash (write) ===');
+      await _doWriteFirmware(firmwareData);
     });
   }
 
@@ -981,7 +1018,7 @@ class _FlashToolScreenState extends State<FlashToolScreen> {
               ? null
               : () {
                   _logOperationStart('Backup & Flash');
-                  _runFlasherRead(fullRead: true);
+                  _runFlasherBackupAndFlash();
                 },
         ),
         _buildActionButton(
