@@ -135,8 +135,10 @@ class _FlashToolScreenState extends State<FlashToolScreen> {
   void _logOperationStart(String opName, {bool logFirmware = true}) {
     final now = DateTime.now();
     final weekday = const ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'][now.weekday - 1];
-    final month = const ['January','February','March','April','May','June','July','August','September','October','November','December'][now.month - 1];
-    _addLog('=== $weekday, $month ${now.day}, ${now.year} ===');
+    final date = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+    _addLog('=== $weekday, $date ===');
+    final osName = kIsWeb ? 'Web' : Platform.operatingSystem[0].toUpperCase() + Platform.operatingSystem.substring(1);
+    _addLog('=== $osName, flasher built on $_buildDate ===');
     _addLog('=== Starting $opName ===');
     _addLog('Platform: $_selectedPlatform');
     if (logFirmware) _addLog('Firmware: ${_customFirmwarePath ?? _selectedFirmware}');
