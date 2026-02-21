@@ -2,6 +2,8 @@
 #include <flutter/flutter_view_controller.h>
 #include <windows.h>
 
+#include <iostream>
+
 #include "flutter_window.h"
 #include "utils.h"
 
@@ -15,7 +17,15 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   // When running from cmd.exe or PowerShell, AttachConsole succeeds.
   // When running standalone with CLI args, allocate a new console.
   // When running without args (GUI mode), only attach if a debugger is present.
-  if (!::AttachConsole(ATTACH_PARENT_PROCESS)) {
+  if (::AttachConsole(ATTACH_PARENT_PROCESS)) {
+    // Successfully attached to parent console (e.g. PowerShell / cmd.exe).
+    // Reopen stdout/stderr so Dart's output reaches the terminal.
+    FILE *unused;
+    freopen_s(&unused, "CONOUT$", "w", stdout);
+    freopen_s(&unused, "CONOUT$", "w", stderr);
+    std::ios::sync_with_stdio();
+    FlutterDesktopResyncOutputStreams();
+  } else {
     if (has_cli_args || ::IsDebuggerPresent()) {
       CreateAndAttachConsole();
     }
