@@ -1169,7 +1169,7 @@ class ESPFlasher extends BaseFlasher {
     payload.setUint32(0, addr, Endian.little);
     payload.setUint32(4, size, Endian.little);
     payload.setUint32(8, 0x1000, Endian.little); // sector size
-    payload.setUint32(12, 0x400, Endian.little);  // packet size (1024 bytes)
+    payload.setUint32(12, 64, Endian.little);  // packet size (64 bytes, matches C#)
 
     _sendCommand(_ESPCmd.readFlash, payload.buffer.asUint8List());
 
