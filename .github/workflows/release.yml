@@ -32,7 +32,9 @@ jobs:
 
       - name: Build APK
         working-directory: Project
-        run: flutter build apk --release --build-number=${{ github.run_number }} --dart-define=BUILD_DATE="$(date +%Y-%m-%d\ %H:%M) #${{ github.run_number }}"
+        run: |
+          BUILD_DATE="$(date '+%Y-%m-%d %H:%M') #${{ github.run_number }}"
+          flutter build apk --release --build-number=${{ github.run_number }} --dart-define=BUILD_DATE="$BUILD_DATE"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
@@ -57,7 +59,10 @@ jobs:
 
       - name: Build Windows
         working-directory: Project
-        run: flutter build windows --release --build-number=${{ github.run_number }} --dart-define=BUILD_DATE="$(Get-Date -Format 'yyyy-MM-dd HH:mm') #${{ github.run_number }}"
+        shell: pwsh
+        run: |
+          $BuildDate = "$(Get-Date -Format 'yyyy-MM-dd HH:mm') #${{ github.run_number }}"
+          flutter build windows --release --build-number=${{ github.run_number }} --dart-define=BUILD_DATE="$BuildDate"
 
       - name: Zip Windows build
         run: Compress-Archive -Path Project/build/windows/x64/runner/Release/* -DestinationPath EasyGUIFlashTool-Windows.zip
@@ -97,7 +102,9 @@ jobs:
 
       - name: Build Linux
         working-directory: Project
-        run: flutter build linux --release --build-number=${{ github.run_number }} --dart-define=BUILD_DATE="$(date +%Y-%m-%d\ %H:%M) #${{ github.run_number }}"
+        run: |
+          BUILD_DATE="$(date '+%Y-%m-%d %H:%M') #${{ github.run_number }}"
+          flutter build linux --release --build-number=${{ github.run_number }} --dart-define=BUILD_DATE="$BUILD_DATE"
 
       - name: Create tarball
         run: tar -czf EasyGUIFlashTool-Linux.tar.gz -C Project/build/linux/x64/release bundle
@@ -135,7 +142,9 @@ jobs:
 
       - name: Build macOS
         working-directory: Project
-        run: flutter build macos --release --build-number=${{ github.run_number }} --dart-define=BUILD_DATE="$(date +%Y-%m-%d\ %H:%M) #${{ github.run_number }}"
+        run: |
+          BUILD_DATE="$(date '+%Y-%m-%d %H:%M') #${{ github.run_number }}"
+          flutter build macos --release --build-number=${{ github.run_number }} --dart-define=BUILD_DATE="$BUILD_DATE"
 
       - name: Zip macOS app
         run: |
