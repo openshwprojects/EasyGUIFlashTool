@@ -38,7 +38,7 @@ jobs:
 
       - name: Build web
         working-directory: Project
-        run: flutter build web --release --base-href "/EasyGUIFlashTool/" --dart-define=BUILD_DATE=$(date +%Y-%m-%d)
+        run: flutter build web --release --base-href "/EasyGUIFlashTool/" --dart-define=BUILD_DATE="$(date +%Y-%m-%d\ %H:%M) #${{ github.run_number }}"
 
       - name: Setup Pages
         uses: actions/configure-pages@v4
