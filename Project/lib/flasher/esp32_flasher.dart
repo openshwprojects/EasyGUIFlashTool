@@ -5,6 +5,7 @@
 library;
 
 import 'dart:async';
+import 'dart:collection';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -83,7 +84,7 @@ class ESPFlasher extends BaseFlasher {
   bool _isStub = false;
 
   /// Receive buffer — incoming stream data is accumulated here.
-  final _rxBuffer = <int>[];
+  final _rxBuffer = Queue<int>();
   StreamSubscription<Uint8List>? _rxSub;
 
   /// Result of the last read operation.
@@ -273,21 +274,23 @@ class ESPFlasher extends BaseFlasher {
 
   /// SLIP-encode [inner] and write to transport.
   void _sendSlipPacket(Uint8List inner) {
-    final packet = <int>[];
-    packet.add(_slipEnd);
+    // Worst case: every byte needs escaping (2×) + 2 framing bytes
+    final packet = Uint8List(inner.length * 2 + 2);
+    int pos = 0;
+    packet[pos++] = _slipEnd;
     for (final b in inner) {
       if (b == _slipEnd) {
-        packet.add(_slipEsc);
-        packet.add(_slipEscEnd);
+        packet[pos++] = _slipEsc;
+        packet[pos++] = _slipEscEnd;
       } else if (b == _slipEsc) {
-        packet.add(_slipEsc);
-        packet.add(_slipEscEsc);
+        packet[pos++] = _slipEsc;
+        packet[pos++] = _slipEscEsc;
       } else {
-        packet.add(b);
+        packet[pos++] = b;
       }
     }
-    packet.add(_slipEnd);
-    transport.write(Uint8List.fromList(packet));
+    packet[pos++] = _slipEnd;
+    transport.write(Uint8List.sublistView(packet, 0, pos));
   }
 
   /// Read one SLIP-framed packet from _rxBuffer within [timeoutMs].
@@ -306,7 +309,7 @@ class ESPFlasher extends BaseFlasher {
         continue;
       }
 
-      final b = _rxBuffer.removeAt(0);
+      final b = _rxBuffer.removeFirst();
 
       if (b == _slipEnd) {
         if (inPacket && payload.isNotEmpty) {
@@ -339,18 +342,18 @@ class ESPFlasher extends BaseFlasher {
   /// Send an ESP bootloader command.
   /// Packet: [0x00, op, len_lo, len_hi, chk_0..chk_3, data...]
   void _sendCommand(int op, Uint8List data, {int checksum = 0}) {
-    final inner = BytesBuilder();
-    inner.addByte(0x00); // direction: request
-    inner.addByte(op);
-    inner.addByte(data.length & 0xFF);
-    inner.addByte((data.length >> 8) & 0xFF);
+    final inner = Uint8List(8 + data.length);
+    inner[0] = 0x00; // direction: request
+    inner[1] = op;
+    inner[2] = data.length & 0xFF;
+    inner[3] = (data.length >> 8) & 0xFF;
     // checksum as 4 LE bytes
-    inner.addByte(checksum & 0xFF);
-    inner.addByte((checksum >> 8) & 0xFF);
-    inner.addByte((checksum >> 16) & 0xFF);
-    inner.addByte((checksum >> 24) & 0xFF);
-    inner.add(data);
-    _sendSlipPacket(inner.toBytes());
+    inner[4] = checksum & 0xFF;
+    inner[5] = (checksum >> 8) & 0xFF;
+    inner[6] = (checksum >> 16) & 0xFF;
+    inner[7] = (checksum >> 24) & 0xFF;
+    inner.setRange(8, 8 + data.length, data);
+    _sendSlipPacket(inner);
   }
 
   /// Read a response packet, matching [expectedCmd].
@@ -847,7 +850,7 @@ class ESPFlasher extends BaseFlasher {
         await Future.delayed(const Duration(milliseconds: 1));
         continue;
       }
-      buffer.add(_rxBuffer.removeAt(0));
+      buffer.add(_rxBuffer.removeFirst());
       // Check for SLIP-framed OHAI: C0 4F 48 41 49 C0
       if (buffer.length >= 6) {
         final n = buffer.length;
@@ -910,7 +913,14 @@ class ESPFlasher extends BaseFlasher {
         return;
       }
 
-      // ── FLASH_DATA loop
+      // ── FLASH_DATA loop — pre-allocate reusable buffers outside loop
+      final block = Uint8List(blockSize);
+      final payload = Uint8List(16 + blockSize);
+      final header = ByteData.sublistView(payload, 0, 16);
+      header.setUint32(0, blockSize, Endian.little);
+      header.setUint32(8, 0, Endian.little);  // reserved
+      header.setUint32(12, 0, Endian.little); // reserved
+
       for (int i = 0; i < numBlocks; i++) {
         if (isCancelled) {
           addWarningLine('Write cancelled by user.');
@@ -920,22 +930,14 @@ class ESPFlasher extends BaseFlasher {
         final int start = i * blockSize;
         final int len = (data.length - start).clamp(0, blockSize);
 
-        // Block must be padded to blockSize with 0xFF
-        final block = Uint8List(blockSize);
-        for (int j = 0; j < blockSize; j++) {
-          block[j] = 0xFF;
-        }
+        // Fill block: data then 0xFF padding
         block.setRange(0, len, data, start);
+        if (len < blockSize) {
+          block.fillRange(len, blockSize, 0xFF);
+        }
 
-        // FLASH_DATA: size(4) + seq(4) + reserved(4) + reserved(4) + data
-        final header = ByteData(16);
-        header.setUint32(0, blockSize, Endian.little);
+        // Update only the seq field in the pre-allocated header
         header.setUint32(4, i, Endian.little);
-        header.setUint32(8, 0, Endian.little);  // reserved
-        header.setUint32(12, 0, Endian.little); // reserved
-
-        final payload = Uint8List(16 + blockSize);
-        payload.setRange(0, 16, header.buffer.asUint8List());
         payload.setRange(16, 16 + blockSize, block);
 
         // XOR checksum over the data block
@@ -1075,21 +1077,22 @@ class ESPFlasher extends BaseFlasher {
 
   /// Send raw SLIP-framed data (no command header, used for ACKs during fast read)
   void _sendRawSlip(Uint8List data) {
-    final packet = <int>[];
-    packet.add(_slipEnd);
+    final packet = Uint8List(data.length * 2 + 2);
+    int pos = 0;
+    packet[pos++] = _slipEnd;
     for (final b in data) {
       if (b == _slipEnd) {
-        packet.add(_slipEsc);
-        packet.add(_slipEscEnd);
+        packet[pos++] = _slipEsc;
+        packet[pos++] = _slipEscEnd;
       } else if (b == _slipEsc) {
-        packet.add(_slipEsc);
-        packet.add(_slipEscEsc);
+        packet[pos++] = _slipEsc;
+        packet[pos++] = _slipEscEsc;
       } else {
-        packet.add(b);
+        packet[pos++] = b;
       }
     }
-    packet.add(_slipEnd);
-    transport.write(Uint8List.fromList(packet));
+    packet[pos++] = _slipEnd;
+    transport.write(Uint8List.sublistView(packet, 0, pos));
   }
 
   /// Read one raw SLIP-decoded packet directly into [dest] at [destOffset].
@@ -1105,23 +1108,26 @@ class ESPFlasher extends BaseFlasher {
         await Future.delayed(const Duration(milliseconds: 1));
         continue;
       }
-      final b = _rxBuffer.removeAt(0);
-      if (b == _slipEnd) {
-        if (inPacket && written > 0) return written;
-        inPacket = true;
-        written = 0;
-      } else if (inPacket) {
-        if (b == _slipEsc) {
-          escape = true;
-        } else {
-          int decoded = b;
-          if (escape) {
-            if (b == _slipEscEnd) decoded = _slipEnd;
-            else if (b == _slipEscEsc) decoded = _slipEsc;
-            escape = false;
+      // Drain all available bytes in bulk to reduce yield overhead
+      while (_rxBuffer.isNotEmpty) {
+        final b = _rxBuffer.removeFirst();
+        if (b == _slipEnd) {
+          if (inPacket && written > 0) return written;
+          inPacket = true;
+          written = 0;
+        } else if (inPacket) {
+          if (b == _slipEsc) {
+            escape = true;
+          } else {
+            int decoded = b;
+            if (escape) {
+              if (b == _slipEscEnd) decoded = _slipEnd;
+              else if (b == _slipEscEsc) decoded = _slipEsc;
+              escape = false;
+            }
+            dest[destOffset + written] = decoded;
+            written++;
           }
-          dest[destOffset + written] = decoded;
-          written++;
         }
       }
     }
@@ -1140,7 +1146,7 @@ class ESPFlasher extends BaseFlasher {
         await Future.delayed(const Duration(milliseconds: 1));
         continue;
       }
-      final b = _rxBuffer.removeAt(0);
+      final b = _rxBuffer.removeFirst();
       if (b == _slipEnd) {
         if (inPacket && payload.isNotEmpty) return Uint8List.fromList(payload);
         inPacket = true;
@@ -1190,7 +1196,7 @@ class ESPFlasher extends BaseFlasher {
 
       int got = -1;
       for (int retry = 0; retry < 5; retry++) {
-        got = await _readRawPacketInto(dataBytes, received, 1000);
+        got = await _readRawPacketInto(dataBytes, received, 3000);
         if (got > 0) break;
         // Timeout — re-send last ACK and retry
         final pct = (received * 100.0 / size).toStringAsFixed(1);
