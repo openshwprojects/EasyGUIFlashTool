@@ -164,6 +164,17 @@ class SerialProvider extends ChangeNotifier {
   /// Open the serial port connection
   Future<bool> connect() async {
     try {
+      // Explicitly sync port and baud rate to the transport before connecting.
+      // The dynamic dispatch in setPort/setBaudRate can silently fail, and
+      // _loadSettings() (async) may overwrite user selections with stale
+      // SharedPreferences data. This ensures the transport always uses what
+      // the UI currently shows.
+      if (_selectedPort != null && _transport is dynamic) {
+        try {
+          (_transport as dynamic).setPort(_selectedPort!);
+          (_transport as dynamic).setInitialBaudRate(_baudRate);
+        } catch (_) {}
+      }
       final success = await _transport.connect();
       _isConnected = success;
       notifyListeners();

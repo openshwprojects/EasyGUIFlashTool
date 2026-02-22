@@ -11,6 +11,7 @@ import 'dart:typed_data';
 import '../flasher/base_flasher.dart';
 import '../flasher/bk7231_flasher.dart';
 import '../flasher/bl602_flasher.dart';
+import '../flasher/esp32_flasher.dart';
 import '../models/chip_platform.dart';
 import '../models/log_level.dart';
 import '../serial/serial_io_mobile.dart' as io;
@@ -223,9 +224,16 @@ class CommandLineRunner {
     final bool isBL = chipType == BKType.bl602 ||
         chipType == BKType.bl702 ||
         chipType == BKType.bl616;
+    final bool isESP = chipType == BKType.esp32;
 
     final BaseFlasher flasher;
-    if (isBL) {
+    if (isESP) {
+      flasher = ESPFlasher(
+        transport: transport,
+        chipType: chipType,
+        baudrate: baud,
+      );
+    } else if (isBL) {
       flasher = BL602Flasher(
         transport: transport,
         chipType: chipType,

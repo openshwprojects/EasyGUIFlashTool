@@ -8,6 +8,7 @@ import '../services/firmware_storage.dart';
 import '../models/chip_platform.dart';
 import '../models/log_level.dart';
 import '../constants.dart';
+import 'linkified_text.dart';
 
 /// Modal dialog that downloads the latest firmware for a given platform,
 /// showing a scrolling log area and a progress bar.
@@ -213,7 +214,7 @@ class _DownloadDialogState extends State<DownloadDialog> {
                   itemCount: _log.length,
                   itemBuilder: (_, i) {
                     final entry = _log[i];
-                    return Text(
+                    return LinkifiedText(
                       entry.message,
                       style: TextStyle(
                         fontFamily: 'monospace',

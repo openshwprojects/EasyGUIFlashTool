@@ -74,6 +74,7 @@ extension ChipPlatformFlasher on ChipPlatform {
       case ChipPlatform.bl602:   return BKType.bl602;
       case ChipPlatform.bl702:   return BKType.bl702;
       case ChipPlatform.bl616:   return BKType.bl616;
+      case ChipPlatform.esp32:   return BKType.esp32;
       default: return null;
     }
   }

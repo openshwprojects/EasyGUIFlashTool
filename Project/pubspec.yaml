@@ -58,3 +58,4 @@ flutter:
   uses-material-design: true
   assets:
     - assets/floaders/
+    - assets/ESP32_Stub.json

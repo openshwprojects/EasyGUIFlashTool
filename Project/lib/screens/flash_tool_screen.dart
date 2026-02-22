@@ -12,9 +12,11 @@ import '../models/chip_platform.dart';
 import '../constants.dart';
 import '../flasher/bk7231_flasher.dart';
 import '../flasher/bl602_flasher.dart';
+import '../flasher/esp32_flasher.dart';
 import '../flasher/base_flasher.dart';
 import 'package:desktop_drop/desktop_drop.dart';
 import '../services/file_opener.dart';
+import '../widgets/linkified_text.dart';
 
 class FlashToolScreen extends StatefulWidget {
   const FlashToolScreen({super.key});
@@ -133,13 +135,14 @@ class _FlashToolScreenState extends State<FlashToolScreen> {
 
   /// Common preamble logged at the start of every flasher action.
   void _logOperationStart(String opName, {bool logFirmware = true}) {
+    final provider = context.read<SerialProvider>();
     final now = DateTime.now();
     final weekday = const ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'][now.weekday - 1];
     final date = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
     _addLog('=== $weekday, $date ===');
     final osName = kIsWeb ? 'Web' : Platform.operatingSystem[0].toUpperCase() + Platform.operatingSystem.substring(1);
     _addLog('=== $osName, flasher built on $_buildDate ===');
-    _addLog('=== Starting $opName ===');
+    _addLog('=== Starting $opName on port ${provider.selectedPort ?? "?"} ===');
     _addLog('Platform: $_selectedPlatform');
     if (logFirmware) _addLog('Firmware: ${_customFirmwarePath ?? _selectedFirmware}');
   }
@@ -297,15 +300,26 @@ class _FlashToolScreenState extends State<FlashToolScreen> {
       );
     }
 
+    // If the saved port is missing from the available list, sync the
+    // provider to the first available port so connect() uses it.
+    // Use a post-frame callback to avoid setState-during-build.
+    final effectivePort =
+        (provider.selectedPort != null && ports.contains(provider.selectedPort))
+            ? provider.selectedPort!
+            : ports.first;
+    if (effectivePort != provider.selectedPort) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        provider.setPort(effectivePort);
+      });
+    }
+
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         const Icon(Icons.usb, size: 20),
         const SizedBox(width: 6),
         DropdownMenu<String>(
-          initialSelection: provider.selectedPort != null && ports.contains(provider.selectedPort)
-              ? provider.selectedPort
-              : ports.first,
+          initialSelection: effectivePort,
           hintText: 'Select Port',
           requestFocusOnTap: false,
           enabled: !provider.isConnected,
@@ -736,8 +750,15 @@ class _FlashToolScreenState extends State<FlashToolScreen> {
     final bool isBL = bkType == BKType.bl602 ||
         bkType == BKType.bl702 ||
         bkType == BKType.bl616;
+    final bool isESP = bkType == BKType.esp32;
 
-    if (isBL) {
+    if (isESP) {
+      _currentFlasher = ESPFlasher(
+        transport: provider.transport,
+        chipType: bkType,
+        baudrate: provider.baudRate,
+      );
+    } else if (isBL) {
       _currentFlasher = BL602Flasher(
         transport: provider.transport,
         chipType: bkType,
@@ -780,11 +801,11 @@ class _FlashToolScreenState extends State<FlashToolScreen> {
     final provider = context.read<SerialProvider>();
     if (provider.isConnected) return true;
 
-    _addLog('Port not open. Attempting to open...');
+    _addLog('Port not open. Attempting to open ${provider.selectedPort ?? "(no port selected)"} at ${provider.baudRate} baud...');
     // This usually triggers permission prompt on supported platforms
     final ok = await provider.connect();
     if (!ok) {
-      _addLog('ERROR: Failed to open port. Operation aborted.');
+      _addLog('ERROR: Failed to open port ${provider.selectedPort ?? "(none)"}. Operation aborted.');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -1228,7 +1249,7 @@ class _FlashToolScreenState extends State<FlashToolScreen> {
                         case LogLevel.info:
                           color = Colors.greenAccent;
                       }
-                      return Text(
+                      return LinkifiedText(
                         entry.text,
                         style: TextStyle(
                           fontFamily: 'monospace',
