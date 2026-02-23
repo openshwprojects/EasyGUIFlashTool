@@ -54,6 +54,34 @@ enum ChipPlatform {
     }
   }
 
+  /// File extensions accepted for this platform.
+  ///
+  /// Mirrors the C# `FormMain.checkFirmwareForCurType` and
+  /// `buttonBrowseFirmware_Click` logic.
+  List<String> get allowedExtensions {
+    switch (this) {
+      case ChipPlatform.w600:
+      case ChipPlatform.w800:
+        return const ['.fls', '.bin', '.img'];
+      case ChipPlatform.bk7231t:
+      case ChipPlatform.bk7231u:
+      case ChipPlatform.bk7231n:
+      case ChipPlatform.bk7231m:
+      case ChipPlatform.bk7238:
+      case ChipPlatform.bk7236:
+      case ChipPlatform.bk7252:
+      case ChipPlatform.bk7252n:
+      case ChipPlatform.bk7258:
+        return const ['.bin', '.rbl'];
+      default:
+        return const ['.bin', '.rbl', '.img'];
+    }
+  }
+
+  /// Union of every extension any platform might accept.
+  /// Used by file-picker dialogs so the user can always browse any firmware.
+  static const List<String> allExtensions = ['.bin', '.rbl', '.fls', '.img'];
+
   @override
   String toString() => displayName;
 }

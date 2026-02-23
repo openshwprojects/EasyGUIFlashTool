@@ -7,7 +7,7 @@ import 'dart:async';
 Future<({String name, Uint8List bytes})?> pickFirmwareFileImplementation() async {
   final completer = Completer<({String name, Uint8List bytes})?>();
 
-  final input = html.FileUploadInputElement()..accept = '.bin,.rbl';
+  final input = html.FileUploadInputElement()..accept = '.bin,.rbl,.fls,.img';
   input.click();
 
   input.onChange.listen((event) {

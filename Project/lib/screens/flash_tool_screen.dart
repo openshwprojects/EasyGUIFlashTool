@@ -544,10 +544,27 @@ class _FlashToolScreenState extends State<FlashToolScreen> {
         if (details.files.isEmpty) return;
         final droppedFile = details.files.first;
         final fileName = droppedFile.name;
-        if (!fileName.toLowerCase().endsWith('.bin') &&
-            !fileName.toLowerCase().endsWith('.rbl')) {
-          _addLog('WARNING: Dropped file "$fileName" is not a .bin/.rbl — ignoring.');
-          return;
+        final lower = fileName.toLowerCase();
+        final allowed = _selectedPlatform.allowedExtensions;
+        if (!allowed.any((ext) => lower.endsWith(ext))) {
+          final proceed = await showDialog<bool>(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              title: const Text('Unexpected file type'),
+              content: Text(
+                '"$fileName" is not a ${allowed.join("/")} file.\n'
+                'Do you want to use it anyway?',
+              ),
+              actions: [
+                TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('No')),
+                TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Yes')),
+              ],
+            ),
+          );
+          if (proceed != true) {
+            _addLog('Dropped file "$fileName" skipped by user.');
+            return;
+          }
         }
         _addLog('Reading dropped file: $fileName ...');
         try {
@@ -686,7 +703,7 @@ class _FlashToolScreenState extends State<FlashToolScreen> {
             ),
             const SizedBox(height: 1),
             Text(
-              'You can also drag and drop a .bin file here.',
+              'You can also drag and drop a ${_selectedPlatform.allowedExtensions.join("/")} file here.',
               style: TextStyle(
                 fontSize: 10,
                 fontStyle: FontStyle.italic,
@@ -868,7 +885,11 @@ class _FlashToolScreenState extends State<FlashToolScreen> {
       _addLog('Backup saved: $filename');
       return true;
     }
-    _addLog('Read failed or was cancelled.');
+    if (_currentFlasher!.isCancelled) {
+      _addLog('Read cancelled by user.');
+    } else {
+      _addLog('Read failed — no data returned. Check log above for errors.');
+    }
     return false;
   }
 
@@ -899,6 +920,7 @@ class _FlashToolScreenState extends State<FlashToolScreen> {
             '${_currentFlasher!.formatHex(startSector)}');
       }
     }
+    _currentFlasher!.sourceFileName = _customFirmwarePath ?? _selectedFirmware;
     await _currentFlasher!.doWrite(startSector, firmwareData);
     _addLog('Write operation finished.');
   }

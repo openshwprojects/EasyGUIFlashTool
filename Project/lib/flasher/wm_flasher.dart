@@ -12,6 +12,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/services.dart' show rootBundle;
 
 import 'base_flasher.dart';
@@ -163,16 +164,14 @@ class WMFlasher extends BaseFlasher {
     _discardInput();
     await transport.write(raw);
 
-    // Baud-rate change command: switch serial after sending
-    if (type == 0x31) {
-      await Future.delayed(const Duration(milliseconds: 10));
+    // Baud-rate change command: switch serial baud rate after sending.
+    // This only runs on native platforms where setBaudRate is instant
+    // (in-place change, no close/reopen). On web, _setBaud handles
+    // the baud change sequence separately.
+    if (type == 0x31 && !kIsWeb) {
+      await Future.delayed(const Duration(milliseconds: 20));
       await transport.setBaudRate(br);
-      // Web transport closes/reopens on baud change — re-subscribe
-      _rxSub?.cancel();
-      _rxBuffer.clear();
-      _rxSub = transport.stream.listen((data) {
-        _rxBuffer.addAll(data);
-      });
+      _currentBaud = br;
     }
 
     // Wait for reply
@@ -331,15 +330,56 @@ class WMFlasher extends BaseFlasher {
   // ────────────────────────────────────────────────────────────────────────
 
   Future<bool> _setBaud(int baud, {bool noResync = false}) async {
-    // Skip if we're already at the target baud rate — sending a redundant
-    // baud change command causes the web transport to close/reopen the port,
-    // which loses the stub response and breaks sync.
+    // Skip if we're already at the target baud rate.
     if (baud == _currentBaud) {
       addLogLine('Already at $baud baud, skipping baud change.');
       return true;
     }
     addLogLine(
         'Changing baud to $baud${!noResync ? ", will resync..." : ""}');
+
+    if (kIsWeb) {
+      // ── Web path ─────────────────────────────────────────────────────
+      // Web Serial API can't change baud in-place; it must close/reopen
+      // the port. We handle the full sequence here:
+      // 1) Send baud change command at the CURRENT baud
+      // 2) Wait for chip to process + respond (response at current baud)
+      // 3) Close/reopen port at the NEW baud
+      // 4) Re-subscribe to stream
+      // 5) Sync at the new baud
+      final msg = Uint8List(4);
+      msg[0] = baud & 0xFF;
+      msg[1] = (baud >> 8) & 0xFF;
+      msg[2] = (baud >> 16) & 0xFF;
+      msg[3] = (baud >> 24) & 0xFF;
+
+      // Send the command at the current baud (don't trigger baud switch
+      // inside _executeCommand — it's gated by !kIsWeb).
+      await _executeCommand(0x31,
+          parms: msg, timeout: 1, expectedReplyLen: 1, br: baud,
+          isErrorExpected: true);
+
+      // Wait for the chip to fully process the command and switch bauds.
+      // The chip ACKs then switches — give it generous time.
+      await Future.delayed(const Duration(milliseconds: 5));
+
+      // Now close port and reopen at the new baud rate.
+      await transport.setBaudRate(baud);
+      await transport.setDTR(false);
+      await transport.setRTS(false);
+      _currentBaud = baud;
+
+      // Re-subscribe to the stream after port reopen.
+      _rxSub?.cancel();
+      _rxBuffer.clear();
+      _rxSub = transport.stream.listen((data) {
+        _rxBuffer.addAll(data);
+      });
+
+      return noResync || await _sync();
+    }
+
+    // ── Native path ──────────────────────────────────────────────────
     final msg = Uint8List(4);
     msg[0] = baud & 0xFF;
     msg[1] = (baud >> 8) & 0xFF;
@@ -548,7 +588,20 @@ class WMFlasher extends BaseFlasher {
 
   @override
   Future<void> doWrite(int startSector, Uint8List data) async {
-    // Not directly supported — use doReadAndWrite with WriteMode.onlyWrite
+    // Detect FLS format from file name (set by caller) or from header magic.
+    String? fName = sourceFileName;
+    if (fName == null || fName.isEmpty) {
+      // Auto-detect: real .fls files start with the 0x9F 0xFF 0xFF 0xA0 magic
+      // right at byte 0 (in contrast, raw backups have it at 0x2000).
+      if (data.length >= 4 &&
+          data[0] == 0x9F && data[1] == 0xFF &&
+          data[2] == 0xFF && data[3] == 0xA0) {
+        fName = 'firmware.fls';
+      } else {
+        fName = 'firmware.bin';
+      }
+    }
+    await doReadAndWrite(startSector, 0, data, fName, WriteMode.onlyWrite);
   }
 
   @override

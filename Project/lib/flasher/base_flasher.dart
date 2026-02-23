@@ -78,6 +78,11 @@ class BaseFlasher {
   /// Set by the UI to request cancellation.
   bool isCancelled = false;
 
+  /// Source firmware file name, set by the UI before write operations.
+  /// Used by flashers (e.g. WMFlasher) that need the extension to choose
+  /// the correct write path (.fls vs .bin).
+  String? sourceFileName;
+
   BaseFlasher({
     required this.transport,
     this.chipType = BKType.bk7231n,
