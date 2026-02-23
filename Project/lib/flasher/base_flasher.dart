@@ -18,6 +18,7 @@ enum BKType {
   bk7238, bk7236, bk7252, bk7252n, bk7258,
   bl602, bl702, bl616,
   esp32,
+  w800, w600,
   detect, invalid;
 
   /// Human-readable chip name matching C# BK7231GUIFlashTool style.

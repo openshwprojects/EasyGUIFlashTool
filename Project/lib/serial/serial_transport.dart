@@ -7,7 +7,7 @@ abstract class SerialTransport {
   Future<void> init();
   Future<bool> connect();
   Future<void> disconnect();
-  void write(Uint8List data);
+  Future<void> write(Uint8List data);
   Future<bool> setDTR(bool value);
   Future<bool> setRTS(bool value);
   Future<void> setBaudRate(int baudRate);

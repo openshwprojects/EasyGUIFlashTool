@@ -134,7 +134,7 @@ class SerialTransportWin32 implements SerialTransport {
   }
 
   @override
-  void write(Uint8List data) {
+  Future<void> write(Uint8List data) async {
     if (_port == null || !_port!.isOpened) {
       print('Port not open, cannot write');
       return;

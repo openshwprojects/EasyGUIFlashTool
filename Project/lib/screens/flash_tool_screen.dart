@@ -13,6 +13,7 @@ import '../constants.dart';
 import '../flasher/bk7231_flasher.dart';
 import '../flasher/bl602_flasher.dart';
 import '../flasher/esp32_flasher.dart';
+import '../flasher/wm_flasher.dart';
 import '../flasher/base_flasher.dart';
 import 'package:desktop_drop/desktop_drop.dart';
 import '../services/file_opener.dart';
@@ -751,6 +752,7 @@ class _FlashToolScreenState extends State<FlashToolScreen> {
         bkType == BKType.bl702 ||
         bkType == BKType.bl616;
     final bool isESP = bkType == BKType.esp32;
+    final bool isWM = bkType == BKType.w800 || bkType == BKType.w600;
 
     if (isESP) {
       _currentFlasher = ESPFlasher(
@@ -760,6 +762,12 @@ class _FlashToolScreenState extends State<FlashToolScreen> {
       );
     } else if (isBL) {
       _currentFlasher = BL602Flasher(
+        transport: provider.transport,
+        chipType: bkType,
+        baudrate: provider.baudRate,
+      );
+    } else if (isWM) {
+      _currentFlasher = WMFlasher(
         transport: provider.transport,
         chipType: bkType,
         baudrate: provider.baudRate,

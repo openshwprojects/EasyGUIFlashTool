@@ -130,7 +130,7 @@ class SerialTransportWeb implements SerialTransport {
   }
 
   @override
-  void write(Uint8List data) async {
+  Future<void> write(Uint8List data) async {
     if (_port == null) return;
 
     try {

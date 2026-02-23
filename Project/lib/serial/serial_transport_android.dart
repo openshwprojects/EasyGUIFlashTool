@@ -76,7 +76,7 @@ class SerialTransportAndroid implements SerialTransport {
   }
 
   @override
-  void write(Uint8List data) {
+  Future<void> write(Uint8List data) async {
     _port?.write(data);
   }
 

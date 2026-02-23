@@ -18,7 +18,7 @@ class SerialTransportImpl implements SerialTransport {
   Future<void> disconnect() async {}
 
   @override
-  void write(Uint8List data) {}
+  Future<void> write(Uint8List data) async {}
 
   @override
   Future<bool> setDTR(bool value) async => true;
