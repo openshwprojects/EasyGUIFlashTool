@@ -47,6 +47,8 @@ class WMFlasher extends BaseFlasher {
     super.chipType = BKType.w800,
     super.baudrate,
   }) {
+    // The port may already be open at the UI-selected baud rate.
+    _currentBaud = baudrate;
     _xm = XmodemSender(transport)
       ..inactivityTimeoutMs = 5000
       ..maxRetries = 5
@@ -64,10 +66,13 @@ class WMFlasher extends BaseFlasher {
         addError('Serial port open failed!\n');
         return false;
       }
-      // Connect already opens at 115200 — just subscribe to the stream.
-      // Set DTR and RTS high — many USB-serial adapters require these
-      // signals for the target to communicate (powers the adapter or
-      // enables TX/RX lines).
+      // The WM bootloader always communicates at 115200.  The UI may have
+      // opened the port at a different baud rate, so force 115200 here —
+      // matching the C# code which does `new SerialPort(name, 115200)`.
+      if (_currentBaud != 115200) {
+        await transport.setBaudRate(115200);
+        _currentBaud = 115200;
+      }
       await transport.setDTR(false);
       await transport.setRTS(false);
       _rxBuffer.clear();
@@ -380,6 +385,9 @@ class WMFlasher extends BaseFlasher {
     }
 
     // ── Native path ──────────────────────────────────────────────────
+    // Win32 setBaudRate closes/reopens the port, which restarts the
+    // transport's read loop.  We must re-subscribe to the stream and
+    // clear stale data, just like the web path does.
     final msg = Uint8List(4);
     msg[0] = baud & 0xFF;
     msg[1] = (baud >> 8) & 0xFF;
@@ -387,8 +395,16 @@ class WMFlasher extends BaseFlasher {
     msg[3] = (baud >> 24) & 0xFF;
     await _executeCommand(0x31,
         parms: msg, timeout: 1, expectedReplyLen: 1, br: baud,
-        isErrorExpected: noResync);
+        isErrorExpected: true);
+
+    // Re-subscribe to the stream after port close/reopen cycle.
+    _rxSub?.cancel();
+    _rxBuffer.clear();
+    _rxSub = transport.stream.listen((data) {
+      _rxBuffer.addAll(data);
+    });
     _currentBaud = baud;
+
     return noResync || await _sync();
   }
 
