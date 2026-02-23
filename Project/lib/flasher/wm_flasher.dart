@@ -34,6 +34,7 @@ class WMFlasher extends BaseFlasher {
 
   // ── Flash state ───────────────────────────────────────────────────────
   int _flashSizeMB = 2;
+  int _currentBaud = 115200;
   Uint8List? _flashID;
   Uint8List? _readResult;
 
@@ -211,9 +212,7 @@ class WMFlasher extends BaseFlasher {
         if (isCancelled) return false;
         final b = await _readByte(2000);
         if (b == 0x43) {
-          // 'C'
           count++;
-          addLog('C');
         } else if (b == -1) {
           // Timeout — don't discard or reset count.
           // The bootloader may not have been reset yet, or 'C' bytes
@@ -233,7 +232,7 @@ class WMFlasher extends BaseFlasher {
           } else {
             await Future.delayed(const Duration(milliseconds: 250));
           }
-          addLogLine('Sync attempt $attempt/1000 — got 0x${b.toRadixString(16)} instead of C');
+          addLogLine('Sync: unexpected byte 0x${b.toRadixString(16)}');
           _discardInput();
           count = 0;
         }
@@ -304,12 +303,21 @@ class WMFlasher extends BaseFlasher {
   Future<bool> _uploadStub() async {
     if (chipType == BKType.w600) return true;
 
-    final compressed =
-        await rootBundle.load('assets/floaders/W800_Stub.bin');
-    final stub =
-        Uint8List.fromList(gzip.decode(compressed.buffer.asUint8List()));
+    Uint8List stub;
+    try {
+      // Try loading pre-decompressed stub first (works on all platforms)
+      final raw = await rootBundle.load('assets/floaders/W800_Stub_raw.bin');
+      stub = Uint8List.fromList(raw.buffer.asUint8List());
+    } catch (_) {
+      // Fall back to gzip-compressed stub (desktop/mobile only — dart:io gzip
+      // is not available on web)
+      final compressed =
+          await rootBundle.load('assets/floaders/W800_Stub.bin');
+      stub =
+          Uint8List.fromList(gzip.decode(compressed.buffer.asUint8List()));
+    }
 
-    addLogLine('Sending stub...');
+    addLogLine('Sending stub (${stub.length} bytes)...');
     final sent = await _xm.send(stub);
     if (sent == stub.length) {
       addLogLine('Stub uploaded!');
@@ -323,6 +331,13 @@ class WMFlasher extends BaseFlasher {
   // ────────────────────────────────────────────────────────────────────────
 
   Future<bool> _setBaud(int baud, {bool noResync = false}) async {
+    // Skip if we're already at the target baud rate — sending a redundant
+    // baud change command causes the web transport to close/reopen the port,
+    // which loses the stub response and breaks sync.
+    if (baud == _currentBaud) {
+      addLogLine('Already at $baud baud, skipping baud change.');
+      return true;
+    }
     addLogLine(
         'Changing baud to $baud${!noResync ? ", will resync..." : ""}');
     final msg = Uint8List(4);
@@ -333,6 +348,7 @@ class WMFlasher extends BaseFlasher {
     await _executeCommand(0x31,
         parms: msg, timeout: 1, expectedReplyLen: 1, br: baud,
         isErrorExpected: noResync);
+    _currentBaud = baud;
     return noResync || await _sync();
   }
 
@@ -353,7 +369,6 @@ class WMFlasher extends BaseFlasher {
     for (int i = 0; i < count; i++) {
       if (isCancelled) return false;
 
-      addLog('Read block at 0x${(offset ^ 0x08000000).toRadixString(16).toUpperCase().padLeft(6, '0')}...');
 
       final header = Uint8List(8);
       header[0] = offset & 0xFF;
