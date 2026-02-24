@@ -46,7 +46,16 @@ class SerialTransportWin32 implements SerialTransport {
   @override
   Future<bool> connect() async {
     if (_port != null && _port!.isOpened) {
-      print('SerialTransportWin32: Already open');
+      // Port is already open (singleton cache).  Make sure the baud rate
+      // matches what setInitialBaudRate() requested — the UI may have
+      // opened the port at the user-selected baud (e.g. 230400) but the
+      // flasher needs the ROM-bootloader baud (115200) for initial sync.
+      try {
+        _port!.BaudRate = _baudRate;
+        print('SerialTransportWin32: Already open – forced baud to $_baudRate');
+      } catch (e) {
+        print('SerialTransportWin32: Already open – BaudRate change failed: $e');
+      }
       return true;
     }
     try {
@@ -85,10 +94,13 @@ class SerialTransportWin32 implements SerialTransport {
 
   /// Tight async read loop — yields to the Dart event loop between reads
   /// so Flutter can still pump messages, but adds zero artificial delay.
+  Completer<void>? _readLoopDone;
+
   void _startReadLoop() {
     if (_isReading) return;
     _isReading = true;
     _readGen++;
+    _readLoopDone = Completer<void>();
     _readLoop(_readGen);
   }
 
@@ -115,6 +127,10 @@ class SerialTransportWin32 implements SerialTransport {
       // Yield enough time for Flutter to process Windows messages
       // (WM_LBUTTONDOWN, WM_MOUSEMOVE, etc.) between read cycles.
       await Future.delayed(const Duration(milliseconds: 5));
+    }
+    // Signal that this read loop has fully exited
+    if (_readLoopDone != null && !_readLoopDone!.isCompleted) {
+      _readLoopDone!.complete();
     }
   }
 
@@ -181,28 +197,17 @@ class SerialTransportWin32 implements SerialTransport {
     _baudRate = baudRate;
     if (_port == null || !_port!.isOpened) return;
     try {
-      // Close and reopen the port to switch baud rate.
-      // SetCommState alone does NOT cancel pending overlapped ReadFile
-      // operations — they continue reading at the old baud rate, producing
-      // garbled data. Closing the handle cancels all pending I/O and
-      // reopening creates fresh overlapped structures at the new baud.
-      // This mirrors the Web Serial transport approach.
-      _stopReadLoop();
-      await Future.delayed(const Duration(milliseconds: 20));
-      _port!.close();
-      await Future.delayed(const Duration(milliseconds: 10));
-      _port!.openWithSettings(BaudRate: baudRate);
+      // Simplest possible baud rate change: just modify the DCB via
+      // SetCommState.  The BaudRate setter calls GetCommState, updates
+      // dcb.BaudRate, calls SetCommState, then PurgeComm.
+      // The read loop keeps running — its current readBytes(timeout: 10ms)
+      // will naturally complete and the next iteration reads at the new baud.
+      _port!.BaudRate = baudRate;
+      // Let USB-serial adapter finish reconfiguring baud rate dividers.
+      await Future.delayed(const Duration(milliseconds: 50));
       print('Baud rate changed to $baudRate');
-      _startReadLoop();
     } catch (e) {
       print('setBaudRate error: $e');
-      // Try to recover by reopening at the requested baud
-      try {
-        if (_port != null && !_port!.isOpened) {
-          _port!.openWithSettings(BaudRate: baudRate);
-        }
-      } catch (_) {}
-      _startReadLoop();
     }
   }
 
