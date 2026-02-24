@@ -76,12 +76,24 @@ const int _spiMosiDlenOffs   = 0x28;
 const int _spiMisoDlenOffs   = 0x2C;
 const int _spiW0Offs         = 0x80;
 
+// ─── SPI register offsets (ESP32-S3 / ESP32-C3 — shared base) ───────────────
+
+const int _esp32s3SpiRegBase     = 0x60002000;
+const int _esp32s3SpiUsrOffs     = 0x18;
+const int _esp32s3SpiUsr2Offs    = 0x20;
+const int _esp32s3SpiMosiDlenOffs = 0x24;
+const int _esp32s3SpiMisoDlenOffs = 0x28;
+const int _esp32s3SpiW0Offs      = 0x58;
+
 // ═══════════════════════════════════════════════════════════════════════════
 //  ESP32 Flasher
 // ═══════════════════════════════════════════════════════════════════════════
 
 class ESPFlasher extends BaseFlasher {
   bool _isStub = false;
+
+  bool get _isESP32S3 => chipType == BKType.esp32s3;
+  bool get _isESP32C3 => chipType == BKType.esp32c3;
 
   /// Receive buffer — incoming stream data is accumulated here.
   final _rxBuffer = Queue<int>();
@@ -629,25 +641,47 @@ class ESPFlasher extends BaseFlasher {
 
   /// Run a SPI flash command by manipulating ESP32 SPI peripheral registers.
   Future<int> _runSpiFlashCmd(int cmd, {int readBits = 0}) async {
-    const baseAddr = _esp32SpiRegBase;
+    // Select chip-specific SPI register addresses
+    final int baseAddr;
+    final int w0Offs;
+    final int usrOffs;
+    final int usr2Offs;
+    final int mosiDlenOffs;
+    final int misoDlenOffs;
+
+    if (_isESP32S3 || _isESP32C3) {
+      baseAddr = _esp32s3SpiRegBase;
+      w0Offs = _esp32s3SpiW0Offs;
+      usrOffs = _esp32s3SpiUsrOffs;
+      usr2Offs = _esp32s3SpiUsr2Offs;
+      mosiDlenOffs = _esp32s3SpiMosiDlenOffs;
+      misoDlenOffs = _esp32s3SpiMisoDlenOffs;
+    } else {
+      baseAddr = _esp32SpiRegBase;
+      w0Offs = _spiW0Offs;
+      usrOffs = _spiUsrOffs;
+      usr2Offs = _spiUsr2Offs;
+      mosiDlenOffs = _spiMosiDlenOffs;
+      misoDlenOffs = _spiMisoDlenOffs;
+    }
 
     // Set MISO length
     if (readBits > 0) {
-      await _writeReg(baseAddr + _spiMisoDlenOffs, readBits - 1);
+      await _writeReg(baseAddr + misoDlenOffs, readBits - 1);
     } else {
-      await _writeReg(baseAddr + _spiMisoDlenOffs, 0);
+      await _writeReg(baseAddr + misoDlenOffs, 0);
     }
     // Set MOSI length = 0
-    await _writeReg(baseAddr + _spiMosiDlenOffs, 0);
+    await _writeReg(baseAddr + mosiDlenOffs, 0);
 
     // SPI_USR_REG: COMMAND(31) | MISO(28) if read
     int usrFlags = 1 << 31; // COMMAND
     if (readBits > 0) usrFlags |= 1 << 28; // MISO
-    await _writeReg(baseAddr + _spiUsrOffs, usrFlags);
+    await _writeReg(baseAddr + usrOffs, usrFlags);
 
     // SPI_USR2_REG: (7 << 28) | cmd
     final usr2 = (7 << 28) | cmd;
-    await _writeReg(baseAddr + _spiUsr2Offs, usr2);
+    await _writeReg(baseAddr + usr2Offs, usr2);
 
     // Execute: SPI_CMD_REG bit 18 (USR)
     await _writeReg(baseAddr, 1 << 18);
@@ -661,7 +695,7 @@ class ESPFlasher extends BaseFlasher {
 
     // Read result from W0
     if (readBits > 0) {
-      return await _readReg(baseAddr + _spiW0Offs);
+      return await _readReg(baseAddr + w0Offs);
     }
     return 0;
   }
@@ -778,7 +812,9 @@ class ESPFlasher extends BaseFlasher {
     setState('Uploading stub...');
     addLogLine('Uploading stub flasher...');
     try {
-      final jsonContent = await rootBundle.loadString('assets/ESP32_Stub.json');
+      final jsonContent = await rootBundle.loadString(
+        'assets/${_isESP32S3 ? "ESP32S3_Stub" : _isESP32C3 ? "ESP32C3_Stub" : "ESP32_Stub"}.json',
+      );
       final stubJson = jsonDecode(jsonContent) as Map<String, dynamic>;
 
       final textB64 = stubJson['text'] as String;

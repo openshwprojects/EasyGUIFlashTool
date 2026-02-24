@@ -17,7 +17,7 @@ enum BKType {
   bk7231t, bk7231u, bk7231n, bk7231m,
   bk7238, bk7236, bk7252, bk7252n, bk7258,
   bl602, bl702, bl616,
-  esp32,
+  esp32, esp32s3, esp32c3,
   w800, w600,
   detect, invalid;
 

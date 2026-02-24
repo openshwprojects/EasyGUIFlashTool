@@ -23,7 +23,9 @@ enum ChipPlatform {
   ln882h('LN882H'),
   xr809('XR809'),
   rtl8710b('RTL8710B'),
-  esp32('ESP32');
+  esp32('ESP32'),
+  esp32s3('ESP32-S3'),
+  esp32c3('ESP32-C3');
 
   const ChipPlatform(this.displayName);
 
@@ -103,6 +105,8 @@ extension ChipPlatformFlasher on ChipPlatform {
       case ChipPlatform.bl702:   return BKType.bl702;
       case ChipPlatform.bl616:   return BKType.bl616;
       case ChipPlatform.esp32:   return BKType.esp32;
+      case ChipPlatform.esp32s3: return BKType.esp32s3;
+      case ChipPlatform.esp32c3: return BKType.esp32c3;
       case ChipPlatform.w800:    return BKType.w800;
       case ChipPlatform.w600:    return BKType.w600;
       default: return null;

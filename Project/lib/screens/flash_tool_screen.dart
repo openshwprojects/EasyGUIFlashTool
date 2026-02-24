@@ -768,7 +768,9 @@ class _FlashToolScreenState extends State<FlashToolScreen> {
     final bool isBL = bkType == BKType.bl602 ||
         bkType == BKType.bl702 ||
         bkType == BKType.bl616;
-    final bool isESP = bkType == BKType.esp32;
+    final bool isESP = bkType == BKType.esp32 ||
+        bkType == BKType.esp32s3 ||
+        bkType == BKType.esp32c3;
     final bool isWM = bkType == BKType.w800 || bkType == BKType.w600;
 
     if (isESP) {

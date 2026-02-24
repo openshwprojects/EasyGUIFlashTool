@@ -59,3 +59,5 @@ flutter:
   assets:
     - assets/floaders/
     - assets/ESP32_Stub.json
+    - assets/ESP32S3_Stub.json
+    - assets/ESP32C3_Stub.json
