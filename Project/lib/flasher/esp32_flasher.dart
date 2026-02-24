@@ -972,10 +972,6 @@ class ESPFlasher extends BaseFlasher {
             '${kbps.toStringAsFixed(1)} KB/s');
       }
 
-      // ── FLASH_END: execute flag 0 = stay in bootloader
-      _sendCommand(_ESPCmd.flashEnd, _uint32ToBytes(0));
-      await _readPacket(1000, _ESPCmd.flashEnd);
-
       sw.stop();
       final secs = sw.elapsedMilliseconds / 1000.0;
       final kbps = (data.length / 1024.0) / secs;
@@ -985,7 +981,7 @@ class ESPFlasher extends BaseFlasher {
       addSuccess('Flash Write Complete.\n');
       setState('Write complete');
 
-      // ── Post-write MD5 verification (stub only)
+      // ── MD5 verification BEFORE FLASH_END (stub must still be running)
       if (_isStub) {
         setState('Verifying MD5...');
         addLogLine('Verifying write with MD5...');
@@ -1008,6 +1004,16 @@ class ESPFlasher extends BaseFlasher {
           addErrorLine('Verification exception: $e');
         }
       }
+
+      // ── FLASH_END: no_entry=1 means stay in bootloader (don't reboot)
+      addLogLine('Sending FLASH_END...');
+      _sendCommand(_ESPCmd.flashEnd, _uint32ToBytes(1));
+      final endResp = await _readPacket(1000, _ESPCmd.flashEnd);
+      if (endResp == null) {
+        addWarningLine('FLASH_END: no response (non-fatal).');
+      } else {
+        addLogLine('FLASH_END OK.');
+      }
     } catch (e) {
       addErrorLine('Write exception: $e');
     }
@@ -1029,8 +1035,8 @@ class ESPFlasher extends BaseFlasher {
 
     _sendCommand(_ESPCmd.spiFlashMd5, payload.buffer.asUint8List());
 
-    // Timeout: 8 seconds per MB, minimum 3s
-    final timeout = (8.0 * size / 1000000.0 * 1000).toInt().clamp(3000, 60000);
+    // Timeout: 8 seconds per MB, minimum 5s
+    final timeout = (8.0 * size / 1000000.0 * 1000).toInt().clamp(5000, 60000);
 
     // Stub returns 16 raw MD5 bytes, ROM returns 32 hex chars
     final rdl = _isStub ? 16 : 32;
