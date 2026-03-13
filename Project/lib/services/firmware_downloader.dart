@@ -15,7 +15,7 @@ class DownloadResult {
   final String fileName;
   final String? filePath; // null on web
   final Uint8List bytes;
-  /// If true, the file was opened in the browser (web) rather than downloaded in-app.
+  /// If true, the browser-managed web download flow was used instead of returning firmware bytes directly to the app.
   final bool openedInBrowser;
   DownloadResult({
     required this.fileName,
